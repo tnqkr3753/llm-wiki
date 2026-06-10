@@ -133,6 +133,12 @@ By default this writes `~/.agents/skills/llm-wiki-recall/SKILL.md`. Use
 `--skills-dir <path>` for a different Codex skills directory, or `--force` to
 replace an existing generated skill.
 
+Installed Codex skills:
+
+| Skill | Installed Markdown | Description |
+|---|---|---|
+| `llm-wiki-recall` | `~/.agents/skills/llm-wiki-recall/SKILL.md` | Use before project-specific or shared-context work when the answer depends on previous decisions, project rules, runbooks, architecture, or implementation context. The skill reads project instructions/config, runs `llm-wiki ask-context`, and asks Codex to separate wiki-grounded facts from inference. |
+
 For each project that should use LLM Wiki, run:
 
 ```bash
