@@ -36,6 +36,14 @@ def test_add_then_search_indexes_markdown(tmp_path: Path) -> None:
     assert str(doc_path) in search_result.output
 
 
+def test_help_exposes_only_public_search_command() -> None:
+    help_result = runner.invoke(app, ["--help"])
+
+    assert help_result.exit_code == 0
+    assert "search-command" not in help_result.output
+    assert "search" in help_result.output
+
+
 def test_search_treats_punctuation_query_as_literal_terms(tmp_path: Path) -> None:
     doc_path = tmp_path / "query.md"
     db_path = tmp_path / "wiki.db"
