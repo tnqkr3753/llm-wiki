@@ -40,6 +40,7 @@ def test_help_exposes_only_public_search_command() -> None:
     help_result = runner.invoke(app, ["--help"])
 
     assert help_result.exit_code == 0
+    assert "project" in help_result.output
     assert "search-command" not in help_result.output
     assert "search" in help_result.output
 
@@ -129,10 +130,10 @@ def test_ask_context_returns_grounded_snippets(tmp_path: Path) -> None:
     assert "approved knowledge" in context_result.output
 
 
-def test_init_creates_project_wiki_layout(tmp_path: Path) -> None:
+def test_project_init_creates_project_wiki_layout(tmp_path: Path) -> None:
     project_path = tmp_path / "project"
 
-    init_result = runner.invoke(app, ["init", "--project", str(project_path)])
+    init_result = runner.invoke(app, ["project", "init", "-p", str(project_path)])
 
     assert init_result.exit_code == 0
     assert "initialized" in init_result.output
@@ -151,7 +152,7 @@ def test_project_config_db_path_is_used_by_default(
     project_path = tmp_path / "project"
     doc_path = project_path / "docs" / "references" / "configured.md"
 
-    init_result = runner.invoke(app, ["init", "--project", str(project_path)])
+    init_result = runner.invoke(app, ["project", "init", "-p", str(project_path)])
     _ = (project_path / ".llm-wiki" / "config.toml").write_text(
         'docs_dir = "docs"\ndb_path = "custom/wiki.db"\n',
         encoding="utf-8",
@@ -173,7 +174,7 @@ def test_init_agents_writes_codex_instructions(tmp_path: Path) -> None:
 
     init_result = runner.invoke(
         app,
-        ["init", "--project", str(project_path), "--agents"],
+        ["project", "init", "-p", str(project_path), "--agents"],
     )
 
     agents_text = (project_path / "AGENTS.md").read_text(encoding="utf-8")
@@ -198,7 +199,7 @@ def test_init_agents_appends_llm_wiki_section_to_existing_agents(
 
     init_result = runner.invoke(
         app,
-        ["init", "--project", str(project_path), "--agents"],
+        ["project", "init", "-p", str(project_path), "--agents"],
     )
 
     agents_text = agents_path.read_text(encoding="utf-8")
@@ -209,12 +210,12 @@ def test_init_agents_appends_llm_wiki_section_to_existing_agents(
     assert "llm-wiki add" in agents_text
 
 
-def test_init_global_creates_home_wiki_layout(tmp_path: Path) -> None:
+def test_init_creates_home_wiki_layout(tmp_path: Path) -> None:
     home_path = tmp_path / "home-wiki"
 
     init_result = runner.invoke(
         app,
-        ["init", "--global", "--home", str(home_path)],
+        ["init", "--home", str(home_path)],
     )
 
     assert init_result.exit_code == 0
@@ -236,8 +237,8 @@ def test_invalid_project_config_fails_without_global_fallback(
     global_doc_path = home_path / "docs" / "references" / "global.md"
     project_doc_path = project_path / "docs" / "references" / "project.md"
 
-    global_init = runner.invoke(app, ["init", "--global", "--home", str(home_path)])
-    project_init = runner.invoke(app, ["init", "--project", str(project_path)])
+    global_init = runner.invoke(app, ["init", "--home", str(home_path)])
+    project_init = runner.invoke(app, ["project", "init", "-p", str(project_path)])
     write_doc(global_doc_path, "Global Wiki", "configured fallback target")
     write_doc(project_doc_path, "Project Wiki", "configured project target")
     global_add = runner.invoke(

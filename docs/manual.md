@@ -15,7 +15,7 @@ uv tool install git+https://github.com/tnqkr3753/llm-wiki.git
 Then prepare the common wiki:
 
 ```bash
-llm-wiki init --global
+llm-wiki init
 ```
 
 This creates:
@@ -32,7 +32,7 @@ This creates:
 Use a custom common repository when needed:
 
 ```bash
-llm-wiki init --global --home /path/to/common/wiki
+llm-wiki init --home /path/to/common/wiki
 ```
 
 You can also set `LLM_WIKI_HOME=/path/to/common/wiki` so future commands use
@@ -43,7 +43,7 @@ that home by default.
 Prepare another project:
 
 ```bash
-llm-wiki init --project /path/to/project
+llm-wiki project init -p /path/to/project
 ```
 
 This creates:
@@ -60,7 +60,7 @@ docs/references/
 Use `--agents` when the target project should teach Codex how to query the wiki:
 
 ```bash
-llm-wiki init --project /path/to/project --agents
+llm-wiki project init -p /path/to/project --agents
 ```
 
 That writes an `AGENTS.md` snippet with the `ask-context` and `add` commands.
@@ -126,7 +126,7 @@ the explicit project `--db` argument in generated `AGENTS.md`.
 For each project that should use LLM Wiki, run:
 
 ```bash
-uv run llm-wiki init --project /path/to/project --agents
+uv run llm-wiki project init -p /path/to/project --agents
 ```
 
 The generated `AGENTS.md` tells Codex to call:
