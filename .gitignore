@@ -1,0 +1,22 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# Runtime wiki data
+.llm-wiki/
+
+# Local agent/workflow state
+.omo/
