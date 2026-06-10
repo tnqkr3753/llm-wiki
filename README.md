@@ -28,7 +28,7 @@ uv sync
 Initialize the global wiki used for common knowledge:
 
 ```bash
-llm-wiki init --global
+llm-wiki init
 ```
 
 By default this creates `~/.llm-wiki/wiki.db`, `~/.llm-wiki/config.toml`, and
@@ -38,13 +38,13 @@ common repository should live somewhere else.
 Initialize a project-local wiki layout:
 
 ```bash
-llm-wiki init --project /path/to/project
+llm-wiki project init -p /path/to/project
 ```
 
 Initialize a project and write Codex `AGENTS.md` instructions:
 
 ```bash
-llm-wiki init --project /path/to/project --agents
+llm-wiki project init -p /path/to/project --agents
 ```
 
 Index one Markdown document:

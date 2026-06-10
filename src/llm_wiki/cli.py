@@ -8,7 +8,7 @@ from rich.console import Console
 
 from llm_wiki.config import resolve_db_path
 from llm_wiki.errors import WikiError
-from llm_wiki.init_project import initialize_global, initialize_project
+from llm_wiki.init_project import InitResult, initialize_global, initialize_project
 from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import DocumentId
 from llm_wiki.store import get_document, search, upsert_document
@@ -16,6 +16,7 @@ from llm_wiki.store import get_document, search, upsert_document
 DEFAULT_LIMIT = 5
 
 app = typer.Typer(no_args_is_help=True)
+project_app = typer.Typer(no_args_is_help=True)
 console = Console(markup=False, width=1000)
 
 DbOption = Annotated[
@@ -31,10 +32,11 @@ LimitOption = Annotated[
     int,
     typer.Option("--limit", min=1, max=20, help="Maximum number of results."),
 ]
-ProjectOption = Annotated[
+ProjectPathOption = Annotated[
     Path | None,
     typer.Option(
-        "--project",
+        "-p",
+        "--path",
         help="Project directory to initialize.",
         file_okay=False,
         writable=True,
@@ -51,17 +53,21 @@ HomeOption = Annotated[
 ]
 
 
+app.add_typer(project_app, name="project", help="Manage project-local wiki state.")
+
+
 @app.command()
 def init(
-    project: ProjectOption = None,
-    global_wiki: Annotated[
-        bool,
-        typer.Option(
-            "--global",
-            help="Initialize the global LLM Wiki home.",
-        ),
-    ] = False,
     home: HomeOption = None,
+) -> None:
+    """Initialize the global LLM Wiki home."""
+    result = initialize_global(home)
+    _print_init_result(result)
+
+
+@project_app.command("init")
+def project_init(
+    path: ProjectPathOption = None,
     agents: Annotated[
         bool,
         typer.Option(
@@ -71,11 +77,12 @@ def init(
     ] = False,
 ) -> None:
     """Initialize an LLM Wiki layout for a project."""
-    if global_wiki:
-        result = initialize_global(home)
-    else:
-        project_path = Path.cwd() if project is None else project
-        result = initialize_project(project_path, include_agents=agents)
+    project_path = Path.cwd() if path is None else path
+    result = initialize_project(project_path, include_agents=agents)
+    _print_init_result(result)
+
+
+def _print_init_result(result: InitResult) -> None:
     console.print(f"initialized {result.scope} {result.project_path}")
     console.print(f"db: {result.db_path}")
     console.print(f"config: {result.config_path}")

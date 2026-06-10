@@ -12,7 +12,8 @@ def test_manual_mentions_init_codex_and_agent_memory() -> None:
     assert "Agent Memory" in combined
     assert "ask-context" in combined
     assert "--db /path/to/project/.llm-wiki/wiki.db" in combined
-    assert "llm-wiki init --global" in combined
+    assert "llm-wiki init" in combined
+    assert "llm-wiki project init -p" in combined
     assert "~/.llm-wiki" in combined
     assert "LLM_WIKI_HOME" in combined
     assert "LLM_WIKI_DB" in combined
