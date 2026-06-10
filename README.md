@@ -53,6 +53,12 @@ Install the Codex recall skill:
 llm-wiki codex install-skill
 ```
 
+Installed Codex skills:
+
+| Skill | Description |
+|---|---|
+| `llm-wiki-recall` | Looks up durable project knowledge with `llm-wiki ask-context` before Codex answers or changes code, then separates wiki-grounded facts from inference. |
+
 Index one Markdown document:
 
 ```bash
