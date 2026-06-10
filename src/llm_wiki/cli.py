@@ -121,16 +121,17 @@ def codex_install_skill(
         typer.Option("--force", help="Overwrite an existing LLM Wiki Codex skill."),
     ] = False,
 ) -> None:
-    """Install the LLM Wiki recall skill for Codex."""
-    result = install_codex_skill(
+    """Install the LLM Wiki Codex skills."""
+    results = install_codex_skill(
         skills_dir=skills_dir,
         tool_path=tool_path,
         force=force,
     )
-    if result.installed:
-        console.print(f"installed Codex skill: {result.skill_path}")
-        return
-    console.print(f"Codex skill already exists: {result.skill_path}")
+    for result in results:
+        if result.installed:
+            console.print(f"installed Codex skill: {result.skill_path}")
+        else:
+            console.print(f"Codex skill already exists: {result.skill_path}")
 
 
 @app.command()
