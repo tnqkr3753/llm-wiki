@@ -210,7 +210,7 @@ def test_init_agents_appends_llm_wiki_section_to_existing_agents(
     assert "llm-wiki add" in agents_text
 
 
-def test_codex_install_skill_writes_recall_skill(tmp_path: Path) -> None:
+def test_codex_install_skill_writes_all_llm_wiki_skills(tmp_path: Path) -> None:
     skills_dir = tmp_path / "skills"
     tool_path = tmp_path / "tool"
 
@@ -226,21 +226,28 @@ def test_codex_install_skill_writes_recall_skill(tmp_path: Path) -> None:
         ],
     )
 
-    skill_path = skills_dir / "llm-wiki-recall" / "SKILL.md"
-    skill_text = skill_path.read_text(encoding="utf-8")
+    expected_skills = {
+        "llm-wiki-init": "project init",
+        "llm-wiki-recall": "ask-context",
+        "llm-wiki-promote": "llm-wiki add",
+        "llm-wiki-maintain": "Reindex",
+    }
     assert install_result.exit_code == 0
-    assert "installed Codex skill" in install_result.output
-    assert skill_path.is_file()
-    assert "name: llm-wiki-recall" in skill_text
-    assert "llm-wiki ask-context" in skill_text
-    assert f"uv run --directory {tool_path}" in skill_text
+    for skill_name, expected_text in expected_skills.items():
+        skill_path = skills_dir / skill_name / "SKILL.md"
+        skill_text = skill_path.read_text(encoding="utf-8")
+        assert f"installed Codex skill: {skill_path}" in install_result.output
+        assert skill_path.is_file()
+        assert f"name: {skill_name}" in skill_text
+        assert expected_text in skill_text
+        assert f"uv run --directory {tool_path}" in skill_text
 
 
 def test_codex_install_skill_preserves_existing_skill_without_force(
     tmp_path: Path,
 ) -> None:
     skills_dir = tmp_path / "skills"
-    skill_dir = skills_dir / "llm-wiki-recall"
+    skill_dir = skills_dir / "llm-wiki-promote"
     skill_dir.mkdir(parents=True)
     skill_path = skill_dir / "SKILL.md"
     _ = skill_path.write_text("existing skill\n", encoding="utf-8")
@@ -253,6 +260,9 @@ def test_codex_install_skill_preserves_existing_skill_without_force(
     assert install_result.exit_code == 0
     assert "already exists" in install_result.output
     assert skill_path.read_text(encoding="utf-8") == "existing skill\n"
+    assert (skills_dir / "llm-wiki-init" / "SKILL.md").is_file()
+    assert (skills_dir / "llm-wiki-recall" / "SKILL.md").is_file()
+    assert (skills_dir / "llm-wiki-maintain" / "SKILL.md").is_file()
 
 
 def test_init_creates_home_wiki_layout(tmp_path: Path) -> None:

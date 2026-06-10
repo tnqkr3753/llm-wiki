@@ -47,7 +47,7 @@ Initialize a project and write Codex `AGENTS.md` instructions:
 llm-wiki project init -p /path/to/project --agents
 ```
 
-Install the Codex recall skill:
+Install the LLM Wiki Codex skills:
 
 ```bash
 llm-wiki codex install-skill
@@ -57,7 +57,10 @@ Installed Codex skills:
 
 | Skill | Description |
 |---|---|
+| `llm-wiki-init` | Sets up global or project-local LLM Wiki storage, docs folders, and Codex `AGENTS.md` instructions. |
 | `llm-wiki-recall` | Looks up durable project knowledge with `llm-wiki ask-context` before Codex answers or changes code, then separates wiki-grounded facts from inference. |
+| `llm-wiki-promote` | Promotes stable decisions, runbooks, source notes, or Agent Memory findings into Markdown docs and indexes them with `llm-wiki add`. |
+| `llm-wiki-maintain` | Audits, reindexes, and checks freshness of project or global wiki docs without deleting user content. |
 
 Index one Markdown document:
 

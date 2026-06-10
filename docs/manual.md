@@ -123,21 +123,24 @@ the explicit project `--db` argument in generated `AGENTS.md`.
 
 ## 6. Codex Integration
 
-Install the Codex recall skill once:
+Install the LLM Wiki Codex skills once:
 
 ```bash
 llm-wiki codex install-skill
 ```
 
-By default this writes `~/.agents/skills/llm-wiki-recall/SKILL.md`. Use
-`--skills-dir <path>` for a different Codex skills directory, or `--force` to
-replace an existing generated skill.
+By default this writes generated `SKILL.md` files under
+`~/.agents/skills/llm-wiki-*`. Use `--skills-dir <path>` for a different Codex
+skills directory, or `--force` to replace existing generated skills.
 
 Installed Codex skills:
 
 | Skill | Installed Markdown | Description |
 |---|---|---|
+| `llm-wiki-init` | `~/.agents/skills/llm-wiki-init/SKILL.md` | Use when setting up LLM Wiki globally or for a project. It initializes storage, docs folders, and project-local `AGENTS.md` instructions so Codex can query the right wiki DB. |
 | `llm-wiki-recall` | `~/.agents/skills/llm-wiki-recall/SKILL.md` | Use before project-specific or shared-context work when the answer depends on previous decisions, project rules, runbooks, architecture, or implementation context. The skill reads project instructions/config, runs `llm-wiki ask-context`, and asks Codex to separate wiki-grounded facts from inference. |
+| `llm-wiki-promote` | `~/.agents/skills/llm-wiki-promote/SKILL.md` | Use when stable knowledge should become durable Wiki content. It writes or updates Markdown under the right docs folder, indexes it with `llm-wiki add`, and verifies recall. |
+| `llm-wiki-maintain` | `~/.agents/skills/llm-wiki-maintain/SKILL.md` | Use when auditing, repairing, reindexing, or checking freshness of an LLM Wiki project or global home. It inspects safely, reindexes Markdown, checks config/AGENTS.md wiring, and reports findings. |
 
 For each project that should use LLM Wiki, run:
 
