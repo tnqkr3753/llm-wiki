@@ -47,6 +47,12 @@ Initialize a project and write Codex `AGENTS.md` instructions:
 llm-wiki project init -p /path/to/project --agents
 ```
 
+Install the Codex recall skill:
+
+```bash
+llm-wiki codex install-skill
+```
+
 Index one Markdown document:
 
 ```bash

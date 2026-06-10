@@ -210,6 +210,51 @@ def test_init_agents_appends_llm_wiki_section_to_existing_agents(
     assert "llm-wiki add" in agents_text
 
 
+def test_codex_install_skill_writes_recall_skill(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills"
+    tool_path = tmp_path / "tool"
+
+    install_result = runner.invoke(
+        app,
+        [
+            "codex",
+            "install-skill",
+            "--skills-dir",
+            str(skills_dir),
+            "--tool-path",
+            str(tool_path),
+        ],
+    )
+
+    skill_path = skills_dir / "llm-wiki-recall" / "SKILL.md"
+    skill_text = skill_path.read_text(encoding="utf-8")
+    assert install_result.exit_code == 0
+    assert "installed Codex skill" in install_result.output
+    assert skill_path.is_file()
+    assert "name: llm-wiki-recall" in skill_text
+    assert "llm-wiki ask-context" in skill_text
+    assert f"uv run --directory {tool_path}" in skill_text
+
+
+def test_codex_install_skill_preserves_existing_skill_without_force(
+    tmp_path: Path,
+) -> None:
+    skills_dir = tmp_path / "skills"
+    skill_dir = skills_dir / "llm-wiki-recall"
+    skill_dir.mkdir(parents=True)
+    skill_path = skill_dir / "SKILL.md"
+    _ = skill_path.write_text("existing skill\n", encoding="utf-8")
+
+    install_result = runner.invoke(
+        app,
+        ["codex", "install-skill", "--skills-dir", str(skills_dir)],
+    )
+
+    assert install_result.exit_code == 0
+    assert "already exists" in install_result.output
+    assert skill_path.read_text(encoding="utf-8") == "existing skill\n"
+
+
 def test_init_creates_home_wiki_layout(tmp_path: Path) -> None:
     home_path = tmp_path / "home-wiki"
 

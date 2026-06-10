@@ -123,6 +123,16 @@ the explicit project `--db` argument in generated `AGENTS.md`.
 
 ## 6. Codex Integration
 
+Install the Codex recall skill once:
+
+```bash
+llm-wiki codex install-skill
+```
+
+By default this writes `~/.agents/skills/llm-wiki-recall/SKILL.md`. Use
+`--skills-dir <path>` for a different Codex skills directory, or `--force` to
+replace an existing generated skill.
+
 For each project that should use LLM Wiki, run:
 
 ```bash

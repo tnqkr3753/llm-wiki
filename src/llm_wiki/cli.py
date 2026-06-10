@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from llm_wiki.codex import install_codex_skill
 from llm_wiki.config import resolve_db_path
 from llm_wiki.errors import WikiError
 from llm_wiki.init_project import InitResult, initialize_global, initialize_project
@@ -16,6 +17,7 @@ from llm_wiki.store import get_document, search, upsert_document
 DEFAULT_LIMIT = 5
 
 app = typer.Typer(no_args_is_help=True)
+codex_app = typer.Typer(no_args_is_help=True)
 project_app = typer.Typer(no_args_is_help=True)
 console = Console(markup=False, width=1000)
 
@@ -51,8 +53,27 @@ HomeOption = Annotated[
         writable=True,
     ),
 ]
+SkillsDirOption = Annotated[
+    Path | None,
+    typer.Option(
+        "--skills-dir",
+        help="Codex skills directory.",
+        file_okay=False,
+        writable=True,
+    ),
+]
+ToolPathOption = Annotated[
+    Path | None,
+    typer.Option(
+        "--tool-path",
+        help="LLM Wiki checkout path for uv-run fallback instructions.",
+        file_okay=False,
+        writable=True,
+    ),
+]
 
 
+app.add_typer(codex_app, name="codex", help="Install Codex integrations.")
 app.add_typer(project_app, name="project", help="Manage project-local wiki state.")
 
 
@@ -89,6 +110,27 @@ def _print_init_result(result: InitResult) -> None:
     console.print(f"index: {result.index_path}")
     if result.agents_path is not None:
         console.print(f"agents: {result.agents_path}")
+
+
+@codex_app.command("install-skill")
+def codex_install_skill(
+    skills_dir: SkillsDirOption = None,
+    tool_path: ToolPathOption = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite an existing LLM Wiki Codex skill."),
+    ] = False,
+) -> None:
+    """Install the LLM Wiki recall skill for Codex."""
+    result = install_codex_skill(
+        skills_dir=skills_dir,
+        tool_path=tool_path,
+        force=force,
+    )
+    if result.installed:
+        console.print(f"installed Codex skill: {result.skill_path}")
+        return
+    console.print(f"Codex skill already exists: {result.skill_path}")
 
 
 @app.command()

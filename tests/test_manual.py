@@ -14,6 +14,7 @@ def test_manual_mentions_init_codex_and_agent_memory() -> None:
     assert "--db /path/to/project/.llm-wiki/wiki.db" in combined
     assert "llm-wiki init" in combined
     assert "llm-wiki project init -p" in combined
+    assert "llm-wiki codex install-skill" in combined
     assert "~/.llm-wiki" in combined
     assert "LLM_WIKI_HOME" in combined
     assert "LLM_WIKI_DB" in combined
