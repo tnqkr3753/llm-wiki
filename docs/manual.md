@@ -6,10 +6,16 @@ source-grounded context through the CLI.
 
 ## 1. Initialize The Global Wiki
 
-Run this inside the LLM Wiki repository to prepare the common wiki:
+Install the CLI once:
 
 ```bash
-uv run llm-wiki init --global
+uv tool install git+https://github.com/tnqkr3753/llm-wiki.git
+```
+
+Then prepare the common wiki:
+
+```bash
+llm-wiki init --global
 ```
 
 This creates:
@@ -26,7 +32,7 @@ This creates:
 Use a custom common repository when needed:
 
 ```bash
-uv run llm-wiki init --global --home /path/to/common/wiki
+llm-wiki init --global --home /path/to/common/wiki
 ```
 
 You can also set `LLM_WIKI_HOME=/path/to/common/wiki` so future commands use
@@ -34,10 +40,10 @@ that home by default.
 
 ## 2. Initialize A Project
 
-Run this inside the LLM Wiki repository to prepare another project:
+Prepare another project:
 
 ```bash
-uv run llm-wiki init --project /path/to/project
+llm-wiki init --project /path/to/project
 ```
 
 This creates:
@@ -54,7 +60,7 @@ docs/references/
 Use `--agents` when the target project should teach Codex how to query the wiki:
 
 ```bash
-uv run llm-wiki init --project /path/to/project --agents
+llm-wiki init --project /path/to/project --agents
 ```
 
 That writes an `AGENTS.md` snippet with the `ask-context` and `add` commands.
@@ -75,7 +81,7 @@ Restart the worker after changing queue settings.
 Index it:
 
 ```bash
-uv run llm-wiki add docs/runbooks/deployment.md
+llm-wiki add docs/runbooks/deployment.md
 ```
 
 ## 4. Retrieve Context
@@ -83,13 +89,13 @@ uv run llm-wiki add docs/runbooks/deployment.md
 Search as a human:
 
 ```bash
-uv run llm-wiki search deployment
+llm-wiki search deployment
 ```
 
 Prepare context for Codex or another LLM:
 
 ```bash
-uv run llm-wiki ask-context "How do we deploy?"
+llm-wiki ask-context "How do we deploy?"
 ```
 
 The output is intentionally plain text so it can be pasted into an agent prompt.

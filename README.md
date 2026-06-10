@@ -5,6 +5,20 @@ with YAML-style frontmatter into SQLite FTS5 and exposes a CLI for retrieval.
 
 ## Setup
 
+Install the CLI from GitHub:
+
+```bash
+uv tool install git+https://github.com/tnqkr3753/llm-wiki.git
+```
+
+Upgrade an existing install:
+
+```bash
+uv tool upgrade llm-wiki
+```
+
+For local development, install dependencies in the checkout:
+
 ```bash
 uv sync
 ```
@@ -14,7 +28,7 @@ uv sync
 Initialize the global wiki used for common knowledge:
 
 ```bash
-uv run llm-wiki init --global
+llm-wiki init --global
 ```
 
 By default this creates `~/.llm-wiki/wiki.db`, `~/.llm-wiki/config.toml`, and
@@ -24,37 +38,37 @@ common repository should live somewhere else.
 Initialize a project-local wiki layout:
 
 ```bash
-uv run llm-wiki init --project /path/to/project
+llm-wiki init --project /path/to/project
 ```
 
 Initialize a project and write Codex `AGENTS.md` instructions:
 
 ```bash
-uv run llm-wiki init --project /path/to/project --agents
+llm-wiki init --project /path/to/project --agents
 ```
 
 Index one Markdown document:
 
 ```bash
-uv run llm-wiki add docs/example.md
+llm-wiki add docs/example.md
 ```
 
 Search the local index:
 
 ```bash
-uv run llm-wiki search architecture
+llm-wiki search architecture
 ```
 
 Show a stored document:
 
 ```bash
-uv run llm-wiki show 1
+llm-wiki show 1
 ```
 
 Print source-grounded context for an LLM prompt:
 
 ```bash
-uv run llm-wiki ask-context "approved knowledge"
+llm-wiki ask-context "approved knowledge"
 ```
 
 Database path resolution is explicit and predictable:
@@ -73,3 +87,9 @@ When Codex runs through `uv run --directory <tool-repo>`, keep using explicit
 
 See [docs/manual.md](docs/manual.md) for the full manual, including Codex
 integration and Agent Memory handoff.
+
+During development, prefix commands with `uv run` from this repository:
+
+```bash
+uv run llm-wiki search architecture
+```

@@ -100,13 +100,7 @@ def add(
     console.print(f"indexed {int(document_id)} {document.title} {document.path}")
 
 
-@app.command()
-def search_command(
-    query: Annotated[str, typer.Argument(help="Full-text query.")],
-    db: DbOption = None,
-    limit: LimitOption = DEFAULT_LIMIT,
-) -> None:
-    """Search indexed documents."""
+def _print_search_results(query: str, db: Path | None, limit: int) -> None:
     try:
         results = search(resolve_db_path(db), query, limit)
     except WikiError as exc:
@@ -129,7 +123,7 @@ def search_alias(
     limit: LimitOption = DEFAULT_LIMIT,
 ) -> None:
     """Search indexed documents."""
-    search_command(query=query, db=db, limit=limit)
+    _print_search_results(query=query, db=db, limit=limit)
 
 
 @app.command()
