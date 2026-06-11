@@ -133,6 +133,15 @@ By default this writes generated `SKILL.md` files under
 `~/.agents/skills/llm-wiki-*`. Use `--skills-dir <path>` for a different Codex
 skills directory, or `--force` to replace existing generated skills.
 
+Generated skill language defaults to `--language auto`. Auto mode follows
+`LC_ALL`, `LC_MESSAGES`, or `LANG` when they indicate Korean; otherwise it falls
+back to English. Use `--language ko` or `--language en` to make the generated
+skill language explicit:
+
+```bash
+llm-wiki codex install-skill --language ko
+```
+
 Installed Codex skills:
 
 | Skill | Installed Markdown | Description |
