@@ -164,6 +164,19 @@ uv run --directory /path/to/llm-wiki llm-wiki add /path/to/project/docs/<file>.m
 before answering project-specific questions or making changes that depend on
 existing decisions.
 
+For global/common knowledge, use the same `llm-wiki-promote` skill. Write the
+Markdown file under `~/.llm-wiki/docs/decisions/`,
+`~/.llm-wiki/docs/runbooks/`, or `~/.llm-wiki/docs/references/`, then let the
+CLI resolve the global DB:
+
+```bash
+uv run --directory /path/to/llm-wiki llm-wiki add ~/.llm-wiki/docs/references/example.md
+uv run --directory /path/to/llm-wiki llm-wiki ask-context "example"
+```
+
+If the common wiki lives somewhere else, set `LLM_WIKI_HOME=/path/to/common/wiki`
+and write under `$LLM_WIKI_HOME/docs/` instead.
+
 ## 7. Agent Memory Handoff
 
 Agent Memory is useful for temporary working observations and session recall.
