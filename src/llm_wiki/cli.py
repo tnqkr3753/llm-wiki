@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from llm_wiki.codex import install_codex_skill
+from llm_wiki.codex import CodexSkillLanguage, install_codex_skill
 from llm_wiki.config import resolve_db_path
 from llm_wiki.errors import WikiError
 from llm_wiki.init_project import InitResult, initialize_global, initialize_project
@@ -71,6 +71,13 @@ ToolPathOption = Annotated[
         writable=True,
     ),
 ]
+LanguageOption = Annotated[
+    CodexSkillLanguage,
+    typer.Option(
+        "--language",
+        help="Generated skill language.",
+    ),
+]
 
 
 app.add_typer(codex_app, name="codex", help="Install Codex integrations.")
@@ -116,6 +123,7 @@ def _print_init_result(result: InitResult) -> None:
 def codex_install_skill(
     skills_dir: SkillsDirOption = None,
     tool_path: ToolPathOption = None,
+    language: LanguageOption = CodexSkillLanguage.AUTO,
     force: Annotated[
         bool,
         typer.Option("--force", help="Overwrite an existing LLM Wiki Codex skill."),
@@ -126,6 +134,7 @@ def codex_install_skill(
         skills_dir=skills_dir,
         tool_path=tool_path,
         force=force,
+        language=language,
     )
     for result in results:
         if result.installed:

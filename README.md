@@ -53,6 +53,9 @@ Install the LLM Wiki Codex skills:
 llm-wiki codex install-skill
 ```
 
+By default `--language auto` uses the shell locale. Use `--language ko` or
+`--language en` when the generated skills should be explicit.
+
 Installed Codex skills:
 
 | Skill | Description |

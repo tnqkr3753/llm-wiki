@@ -272,6 +272,38 @@ def test_codex_install_skill_preserves_existing_skill_without_force(
     assert (skills_dir / "llm-wiki-maintain" / "SKILL.md").is_file()
 
 
+def test_codex_install_skill_can_write_korean_skills(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills"
+
+    install_result = runner.invoke(
+        app,
+        ["codex", "install-skill", "--skills-dir", str(skills_dir), "--language", "ko"],
+    )
+
+    recall_text = (skills_dir / "llm-wiki-recall" / "SKILL.md").read_text(
+        encoding="utf-8",
+    )
+    assert install_result.exit_code == 0
+    assert "사용자의 언어" in recall_text
+    assert "위키 근거" in recall_text
+
+
+def test_codex_install_skill_auto_language_uses_locale(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills"
+
+    install_result = runner.invoke(
+        app,
+        ["codex", "install-skill", "--skills-dir", str(skills_dir)],
+        env={"LANG": "ko_KR.UTF-8"},
+    )
+
+    recall_text = (skills_dir / "llm-wiki-recall" / "SKILL.md").read_text(
+        encoding="utf-8",
+    )
+    assert install_result.exit_code == 0
+    assert "사용자의 언어" in recall_text
+
+
 def test_init_creates_home_wiki_layout(tmp_path: Path) -> None:
     home_path = tmp_path / "home-wiki"
 
