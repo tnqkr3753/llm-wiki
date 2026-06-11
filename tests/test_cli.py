@@ -242,6 +242,13 @@ def test_codex_install_skill_writes_all_llm_wiki_skills(tmp_path: Path) -> None:
         assert expected_text in skill_text
         assert f"uv run --directory {tool_path}" in skill_text
 
+    promote_text = (
+        skills_dir / "llm-wiki-promote" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "~/.llm-wiki/docs/references/example.md" in promote_text
+    assert "LLM_WIKI_HOME" in promote_text
+    assert "global/common knowledge" in promote_text
+
 
 def test_codex_install_skill_preserves_existing_skill_without_force(
     tmp_path: Path,

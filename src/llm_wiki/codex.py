@@ -122,8 +122,13 @@ repeatable troubleshooting findings.
 
 ## Workflow
 
-1. Choose the destination: `docs/decisions/`, `docs/runbooks/`, or
-   `docs/references/`.
+1. Choose the destination.
+   - Project-specific knowledge: `/path/to/project/docs/decisions/`,
+     `/path/to/project/docs/runbooks/`, or `/path/to/project/docs/references/`.
+   - Global/common knowledge: `~/.llm-wiki/docs/decisions/`,
+     `~/.llm-wiki/docs/runbooks/`, or `~/.llm-wiki/docs/references/`.
+   - If `LLM_WIKI_HOME` is set, use `$LLM_WIKI_HOME/docs/` instead of
+     `~/.llm-wiki/docs/`.
 2. Write or update a Markdown document with frontmatter:
 
 ```markdown
@@ -141,7 +146,15 @@ uv run --directory {tool_path} llm-wiki add \\
   --db /path/to/project/.llm-wiki/wiki.db
 ```
 
-4. Verify recall with `llm-wiki ask-context`.
+4. For global/common knowledge, index through global config resolution:
+
+```bash
+uv run --directory {tool_path} llm-wiki add \\
+  ~/.llm-wiki/docs/references/example.md
+```
+
+5. Verify recall with `llm-wiki ask-context`. For global/common knowledge,
+   omit `--db` unless `LLM_WIKI_DB` is intentionally set for a different DB.
 
 ## Final Response
 
