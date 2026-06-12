@@ -172,6 +172,18 @@ The hook runs on `UserPromptSubmit`. It is read-only: it checks for project
 exists. Codex requires non-managed project hooks to be reviewed and trusted in
 `/hooks` before they run.
 
+Hook choice:
+
+- Use `UserPromptSubmit` for Wiki recall because it runs right before the user
+  prompt is sent and can add `additionalContext`.
+- `SessionStart` is acceptable later for light startup guidance, such as
+  telling Codex that the project has LLM Wiki configured. Avoid full search
+  there because it has no user question yet.
+- `PreToolUse` and `PostToolUse` are better for command or file guardrails, not
+  normal Wiki retrieval.
+- Avoid `Stop` and `PostCompact` for automatic promotion. Wiki promotion should
+  stay explicit through `llm-wiki-promote`.
+
 For each project that should use LLM Wiki, run:
 
 ```bash

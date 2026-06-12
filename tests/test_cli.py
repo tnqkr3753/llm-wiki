@@ -232,7 +232,7 @@ def test_codex_install_skill_writes_all_llm_wiki_skills(tmp_path: Path) -> None:
         "llm-wiki-recall": "ask-context",
         "llm-wiki-promote": "llm-wiki add",
         "llm-wiki-maintain": "Reindex",
-        "llm-wiki-hooks": "install-hooks",
+        "llm-wiki-hooks": "SessionStart",
     }
     assert install_result.exit_code == 0
     for skill_name, expected_text in expected_skills.items():
@@ -250,6 +250,11 @@ def test_codex_install_skill_writes_all_llm_wiki_skills(tmp_path: Path) -> None:
     assert "~/.llm-wiki/docs/references/example.md" in promote_text
     assert "LLM_WIKI_HOME" in promote_text
     assert "global/common knowledge" in promote_text
+    hooks_text = (skills_dir / "llm-wiki-hooks" / "SKILL.md").read_text(
+        encoding="utf-8",
+    )
+    assert "UserPromptSubmit" in hooks_text
+    assert "Do not use `Stop`" in hooks_text
 
 
 def test_codex_install_skill_preserves_existing_skill_without_force(

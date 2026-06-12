@@ -255,6 +255,17 @@ The generated hook runs on `UserPromptSubmit`. It is read-only: it checks for a
 project `.llm-wiki/config.toml`, `LLM_WIKI_DB`, or `LLM_WIKI_HOME`, runs
 `llm-wiki ask-context`, and returns `additionalContext` only when context exists.
 
+## Hook Choice
+
+- `UserPromptSubmit` is the default because it runs right before the user prompt
+  is sent and can add model-visible Wiki context.
+- `SessionStart` is acceptable later for light startup guidance, such as saying
+  that the project has LLM Wiki configured. Do not use it for full recall search.
+- `PreToolUse` and `PostToolUse` are better for command/file guardrails, not
+  normal Wiki retrieval.
+- Do not use `Stop` or `PostCompact` to auto-promote content into Wiki. Promotion
+  should stay explicit through `llm-wiki-promote`.
+
 Do not install global hooks by default. Do not auto-promote content from hooks.
 
 ## Final Response
