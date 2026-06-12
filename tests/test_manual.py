@@ -17,6 +17,9 @@ def test_manual_mentions_init_codex_and_agent_memory() -> None:
     assert "llm-wiki codex install-skill" in combined
     assert "llm-wiki codex install-hooks" in combined
     assert "UserPromptSubmit" in combined
+    assert "SessionStart" in combined
+    assert "PreToolUse" in combined
+    assert "Stop" in combined
     assert "--language auto" in combined
     assert "--language ko" in combined
     assert "Installed Codex skills" in combined
