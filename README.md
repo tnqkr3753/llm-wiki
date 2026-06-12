@@ -74,6 +74,7 @@ Installed Codex skills:
 | `llm-wiki-recall` | Looks up durable project knowledge with `llm-wiki ask-context` before Codex answers or changes code, then separates wiki-grounded facts from inference. |
 | `llm-wiki-promote` | Promotes stable decisions, runbooks, source notes, or Agent Memory findings into Markdown docs and indexes them with `llm-wiki add`. |
 | `llm-wiki-maintain` | Audits, reindexes, and checks freshness of project or global wiki docs without deleting user content. |
+| `llm-wiki-hooks` | Installs and verifies project-local Codex `UserPromptSubmit` hooks for automatic Wiki context injection. |
 
 Index one Markdown document:
 
