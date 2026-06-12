@@ -151,6 +151,26 @@ Installed Codex skills:
 | `llm-wiki-promote` | `~/.agents/skills/llm-wiki-promote/SKILL.md` | Use when stable knowledge should become durable Wiki content. It writes or updates Markdown under the right docs folder, indexes it with `llm-wiki add`, and verifies recall. |
 | `llm-wiki-maintain` | `~/.agents/skills/llm-wiki-maintain/SKILL.md` | Use when auditing, repairing, reindexing, or checking freshness of an LLM Wiki project or global home. It inspects safely, reindexes Markdown, checks config/AGENTS.md wiring, and reports findings. |
 
+Install project-local Codex hooks when a project should automatically retrieve
+Wiki context before each prompt:
+
+```bash
+llm-wiki codex install-hooks -p /path/to/project
+```
+
+This writes:
+
+```text
+/path/to/project/.codex/hooks.json
+/path/to/project/.codex/hooks/llm_wiki_user_prompt.py
+```
+
+The hook runs on `UserPromptSubmit`. It is read-only: it checks for project
+`.llm-wiki/config.toml`, `LLM_WIKI_DB`, or `LLM_WIKI_HOME`, runs
+`llm-wiki ask-context`, and returns `additionalContext` only when Wiki context
+exists. Codex requires non-managed project hooks to be reviewed and trusted in
+`/hooks` before they run.
+
 For each project that should use LLM Wiki, run:
 
 ```bash

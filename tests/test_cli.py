@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -302,6 +303,77 @@ def test_codex_install_skill_auto_language_uses_locale(tmp_path: Path) -> None:
     )
     assert install_result.exit_code == 0
     assert "사용자의 언어" in recall_text
+
+
+def test_codex_install_hooks_writes_user_prompt_hook(tmp_path: Path) -> None:
+    project_path = tmp_path / "project"
+    tool_path = tmp_path / "tool"
+    project_path.mkdir()
+
+    install_result = runner.invoke(
+        app,
+        [
+            "codex",
+            "install-hooks",
+            "-p",
+            str(project_path),
+            "--tool-path",
+            str(tool_path),
+        ],
+    )
+
+    hooks_path = project_path / ".codex" / "hooks.json"
+    script_path = project_path / ".codex" / "hooks" / "llm_wiki_user_prompt.py"
+    hooks_data = json.loads(hooks_path.read_text(encoding="utf-8"))
+    script_text = script_path.read_text(encoding="utf-8")
+    hook_command = hooks_data["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    assert install_result.exit_code == 0
+    assert "installed Codex hooks" in install_result.output
+    assert script_path.is_file()
+    assert "llm-wiki ask-context" in script_text
+    assert "hookSpecificOutput" in script_text
+    assert str(script_path) in hook_command
+    assert hooks_data["hooks"]["UserPromptSubmit"][0]["hooks"][0]["timeout"] == 5
+
+
+def test_codex_install_hooks_preserves_existing_hooks_json(tmp_path: Path) -> None:
+    project_path = tmp_path / "project"
+    codex_path = project_path / ".codex"
+    codex_path.mkdir(parents=True)
+    hooks_path = codex_path / "hooks.json"
+    _ = hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "matcher": "startup",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "python3 existing.py",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    install_result = runner.invoke(
+        app,
+        ["codex", "install-hooks", "-p", str(project_path)],
+    )
+
+    hooks_data = json.loads(hooks_path.read_text(encoding="utf-8"))
+    assert install_result.exit_code == 0
+    assert "SessionStart" in hooks_data["hooks"]
+    assert "UserPromptSubmit" in hooks_data["hooks"]
+    assert hooks_data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == (
+        "python3 existing.py"
+    )
 
 
 def test_init_creates_home_wiki_layout(tmp_path: Path) -> None:
