@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 
 from llm_wiki.codex import CodexSkillLanguage, install_codex_skill
+from llm_wiki.codex_hooks import install_codex_hooks
 from llm_wiki.config import resolve_db_path
 from llm_wiki.errors import WikiError
 from llm_wiki.init_project import InitResult, initialize_global, initialize_project
@@ -141,6 +142,26 @@ def codex_install_skill(
             console.print(f"installed Codex skill: {result.skill_path}")
         else:
             console.print(f"Codex skill already exists: {result.skill_path}")
+
+
+@codex_app.command("install-hooks")
+def codex_install_hooks(
+    path: ProjectPathOption = None,
+    tool_path: ToolPathOption = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite the generated hook script."),
+    ] = False,
+) -> None:
+    """Install project-local Codex hooks for LLM Wiki."""
+    project_path = Path.cwd() if path is None else path
+    result = install_codex_hooks(
+        project_path=project_path,
+        tool_path=tool_path,
+        force=force,
+    )
+    console.print(f"installed Codex hooks: {result.hooks_path}")
+    console.print(f"script: {result.script_path}")
 
 
 @app.command()

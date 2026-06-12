@@ -56,6 +56,16 @@ llm-wiki codex install-skill
 By default `--language auto` uses the shell locale. Use `--language ko` or
 `--language en` when the generated skills should be explicit.
 
+Install project-local Codex hooks:
+
+```bash
+llm-wiki codex install-hooks -p /path/to/project
+```
+
+This writes `.codex/hooks.json` and a `UserPromptSubmit` hook script that
+injects `llm-wiki ask-context` results when the project has LLM Wiki configured.
+Review and trust the hook with Codex `/hooks` before it runs.
+
 Installed Codex skills:
 
 | Skill | Description |
