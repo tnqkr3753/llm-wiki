@@ -232,6 +232,7 @@ def test_codex_install_skill_writes_all_llm_wiki_skills(tmp_path: Path) -> None:
         "llm-wiki-recall": "ask-context",
         "llm-wiki-promote": "llm-wiki add",
         "llm-wiki-maintain": "Reindex",
+        "llm-wiki-hooks": "install-hooks",
     }
     assert install_result.exit_code == 0
     for skill_name, expected_text in expected_skills.items():
@@ -271,6 +272,7 @@ def test_codex_install_skill_preserves_existing_skill_without_force(
     assert (skills_dir / "llm-wiki-init" / "SKILL.md").is_file()
     assert (skills_dir / "llm-wiki-recall" / "SKILL.md").is_file()
     assert (skills_dir / "llm-wiki-maintain" / "SKILL.md").is_file()
+    assert (skills_dir / "llm-wiki-hooks" / "SKILL.md").is_file()
 
 
 def test_codex_install_skill_can_write_korean_skills(tmp_path: Path) -> None:

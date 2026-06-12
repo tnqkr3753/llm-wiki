@@ -209,4 +209,58 @@ Report checked file count, reindexed file count, findings, recall verification,
 and confirm no files were deleted.
 """,
     ),
+    SkillSpec(
+        name="llm-wiki-hooks",
+        description=(
+            "Use this when a user wants Codex hooks for LLM Wiki, automatic "
+            "wiki context injection before prompts, project-local .codex hook "
+            "setup, hook trust guidance, or says phrases like "
+            '"훅 만들어", "Codex hook 붙여", "자동으로 위키 보게 해줘".'
+        ),
+        korean_description=(
+            "사용자가 LLM Wiki용 Codex hook을 설치하거나, 프롬프트 전에 위키 "
+            "컨텍스트를 자동 주입하거나, 프로젝트 .codex hook 설정과 trust "
+            '절차를 원할 때 사용합니다. "훅 만들어", "Codex hook 붙여", '
+            '"자동으로 위키 보게 해줘" 같은 요청을 포함합니다.'
+        ),
+        body_template="""# LLM Wiki Hooks
+
+Use this skill to install and verify project-local Codex hooks for LLM Wiki.
+Hooks are opt-in per project because they run automatically in the Codex loop.
+
+## Workflow
+
+1. Identify the target project directory.
+2. Install the hook:
+
+```bash
+uv run --directory {tool_path} llm-wiki codex install-hooks -p /path/to/project
+```
+
+3. Verify generated files:
+
+```bash
+test -f /path/to/project/.codex/hooks.json
+test -f /path/to/project/.codex/hooks/llm_wiki_user_prompt.py
+grep "UserPromptSubmit" /path/to/project/.codex/hooks.json
+grep "llm-wiki ask-context" /path/to/project/.codex/hooks/llm_wiki_user_prompt.py
+```
+
+4. Tell the user to open Codex `/hooks`, review the new project hook, and trust
+   it before expecting automatic execution.
+
+## Behavior
+
+The generated hook runs on `UserPromptSubmit`. It is read-only: it checks for a
+project `.llm-wiki/config.toml`, `LLM_WIKI_DB`, or `LLM_WIKI_HOME`, runs
+`llm-wiki ask-context`, and returns `additionalContext` only when context exists.
+
+Do not install global hooks by default. Do not auto-promote content from hooks.
+
+## Final Response
+
+Report the project path, generated `hooks.json`, generated script path, and
+whether the user still needs to trust it in `/hooks`.
+""",
+    ),
 )

@@ -150,6 +150,7 @@ Installed Codex skills:
 | `llm-wiki-recall` | `~/.agents/skills/llm-wiki-recall/SKILL.md` | Use before project-specific or shared-context work when the answer depends on previous decisions, project rules, runbooks, architecture, or implementation context. The skill reads project instructions/config, runs `llm-wiki ask-context`, and asks Codex to separate wiki-grounded facts from inference. |
 | `llm-wiki-promote` | `~/.agents/skills/llm-wiki-promote/SKILL.md` | Use when stable knowledge should become durable Wiki content. It writes or updates Markdown under the right docs folder, indexes it with `llm-wiki add`, and verifies recall. |
 | `llm-wiki-maintain` | `~/.agents/skills/llm-wiki-maintain/SKILL.md` | Use when auditing, repairing, reindexing, or checking freshness of an LLM Wiki project or global home. It inspects safely, reindexes Markdown, checks config/AGENTS.md wiring, and reports findings. |
+| `llm-wiki-hooks` | `~/.agents/skills/llm-wiki-hooks/SKILL.md` | Use when installing or verifying project-local Codex hooks for LLM Wiki. It runs `llm-wiki codex install-hooks`, checks the generated `UserPromptSubmit` hook, and reminds the user to trust it in `/hooks`. |
 
 Install project-local Codex hooks when a project should automatically retrieve
 Wiki context before each prompt:

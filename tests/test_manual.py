@@ -24,6 +24,7 @@ def test_manual_mentions_init_codex_and_agent_memory() -> None:
     assert "llm-wiki-recall" in combined
     assert "llm-wiki-promote" in combined
     assert "llm-wiki-maintain" in combined
+    assert "llm-wiki-hooks" in combined
     assert "wiki-grounded facts from inference" in combined
     assert "global/common knowledge" in combined
     assert "~/.llm-wiki/docs/references" in combined
