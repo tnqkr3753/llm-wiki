@@ -62,16 +62,16 @@ def upsert_document(db_path: Path, document: ParsedDocument) -> DocumentId:
         else:
             document_id = DocumentId(_row_int(existing, 0))
             _ = connection.execute(
+                "DELETE FROM documents_fts WHERE rowid = ?",
+                (int(document_id),),
+            )
+            _ = connection.execute(
                 """
                 UPDATE documents
                 SET title = ?, tags = ?, body = ?
                 WHERE id = ?
                 """,
                 (document.title, tags_text, document.body, int(document_id)),
-            )
-            _ = connection.execute(
-                "DELETE FROM documents_fts WHERE rowid = ?",
-                (int(document_id),),
             )
 
         _ = connection.execute(
