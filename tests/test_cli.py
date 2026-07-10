@@ -1,4 +1,6 @@
 import json
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,102 @@ def write_doc(path: Path, title: str, body: str) -> None:
         f"---\ntitle: {title}\ntags: architecture, runbook\n---\n\n{body}\n",
         encoding="utf-8",
     )
+
+
+def test_add_replaces_external_content_fts_document_without_stale_matches(
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    doc_path = docs_dir / "updating.md"
+    second_doc_path = docs_dir / "stable.md"
+    db_path = tmp_path / "wiki.db"
+    _ = doc_path.write_text(
+        (
+            "---\n"
+            "title: Old Title\n"
+            "tags: old-tag-only\n"
+            "---\n\n"
+            "stale-marker-alpha original body\n"
+        ),
+        encoding="utf-8",
+    )
+    write_doc(
+        second_doc_path,
+        "Stable Companion",
+        "stable-marker-beta companion body remains searchable",
+    )
+
+    first_add_result = runner.invoke(app, ["add", str(doc_path), "--db", str(db_path)])
+    second_add_result = runner.invoke(
+        app,
+        ["add", str(second_doc_path), "--db", str(db_path)],
+    )
+    _ = doc_path.write_text(
+        (
+            "---\n"
+            "title: New Title\n"
+            "tags: new-tag-only\n"
+            "---\n\n"
+            "fresh-marker-gamma replacement body\n"
+        ),
+        encoding="utf-8",
+    )
+    first_update_result = runner.invoke(
+        app,
+        ["add", str(doc_path), "--db", str(db_path)],
+    )
+    _ = doc_path.write_text(
+        (
+            "---\n"
+            "title: Newest Title\n"
+            "tags: newest-tag-only\n"
+            "---\n\n"
+            "final-marker-delta final body\n"
+        ),
+        encoding="utf-8",
+    )
+    second_update_result = runner.invoke(
+        app,
+        ["add", str(doc_path), "--db", str(db_path)],
+    )
+    fresh_context_result = runner.invoke(
+        app,
+        ["ask-context", "final-marker-delta", "--db", str(db_path), "--limit", "2"],
+    )
+    stale_search_result = runner.invoke(
+        app,
+        ["search", "stale-marker-alpha", "--db", str(db_path)],
+    )
+    newest_tag_search_result = runner.invoke(
+        app,
+        ["search", "newest-tag-only", "--db", str(db_path)],
+    )
+    stable_search_result = runner.invoke(
+        app,
+        ["search", "stable-marker-beta", "--db", str(db_path)],
+    )
+
+    assert first_add_result.exit_code == 0
+    assert second_add_result.exit_code == 0
+    assert first_update_result.exit_code == 0
+    assert second_update_result.exit_code == 0
+    assert fresh_context_result.exit_code == 0
+    assert "Newest Title" in fresh_context_result.output
+    assert "final-marker-delta" in fresh_context_result.output
+    assert "stale-marker-alpha" not in fresh_context_result.output
+    assert newest_tag_search_result.exit_code == 0
+    assert "Newest Title" in newest_tag_search_result.output
+    assert "newest-tag-only" in newest_tag_search_result.output
+    assert "old-tag-only" not in newest_tag_search_result.output
+    assert stale_search_result.exit_code == 0
+    assert "No results" in stale_search_result.output
+    assert stable_search_result.exit_code == 0
+    assert "Stable Companion" in stable_search_result.output
+    assert "stable-marker-beta" in stable_search_result.output
+    with closing(sqlite3.connect(db_path)) as connection:
+        integrity = connection.execute("PRAGMA integrity_check").fetchone()
+    assert integrity == ("ok",)
 
 
 def test_add_then_search_indexes_markdown(tmp_path: Path) -> None:
@@ -244,9 +342,9 @@ def test_codex_install_skill_writes_all_llm_wiki_skills(tmp_path: Path) -> None:
         assert expected_text in skill_text
         assert f"uv run --directory {tool_path}" in skill_text
 
-    promote_text = (
-        skills_dir / "llm-wiki-promote" / "SKILL.md"
-    ).read_text(encoding="utf-8")
+    promote_text = (skills_dir / "llm-wiki-promote" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
     assert "~/.llm-wiki/docs/references/example.md" in promote_text
     assert "LLM_WIKI_HOME" in promote_text
     assert "global/common knowledge" in promote_text
