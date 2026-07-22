@@ -1,19 +1,16 @@
-"""Codex skill installation support."""
+"""Agent skill installation support."""
 
 import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Final
 
-from llm_wiki.codex_templates import SKILL_SPECS, SkillSpec
-
-DEFAULT_CODEX_SKILLS_DIR: Final = Path("~/.agents/skills")
-TOOL_REPO_PATH: Final = Path(__file__).resolve().parents[2]
+from llm_wiki.agents import TOOL_REPO_PATH, AgentTarget
+from llm_wiki.skill_templates import SkillSpec, skill_specs
 
 
-class CodexSkillLanguage(StrEnum):
-    """Language mode for generated Codex skill Markdown."""
+class SkillLanguage(StrEnum):
+    """Language mode for generated skill Markdown."""
 
     AUTO = "auto"
     EN = "en"
@@ -22,20 +19,22 @@ class CodexSkillLanguage(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class SkillInstallResult:
-    """Result of installing or preserving a Codex skill."""
+    """Result of installing or preserving an agent skill."""
 
     skill_name: str
     skill_path: Path
     installed: bool
 
-def install_codex_skill(
+
+def install_agent_skills(
+    target: AgentTarget,
     skills_dir: Path | None,
     tool_path: Path | None,
     force: bool,
-    language: CodexSkillLanguage,
+    language: SkillLanguage,
 ) -> tuple[SkillInstallResult, ...]:
-    """Install all LLM Wiki Codex skills into a Codex skills directory."""
-    resolved_skills_dir = _resolve_skills_dir(skills_dir)
+    """Install all LLM Wiki skills into an agent skills directory."""
+    resolved_skills_dir = _resolve_skills_dir(target, skills_dir)
     resolved_tool_path = TOOL_REPO_PATH if tool_path is None else tool_path
     resolved_language = _resolve_language(language)
     return tuple(
@@ -46,7 +45,7 @@ def install_codex_skill(
             force=force,
             language=resolved_language,
         )
-        for spec in SKILL_SPECS
+        for spec in skill_specs(target)
     )
 
 
@@ -55,7 +54,7 @@ def _install_skill(
     tool_path: Path,
     spec: SkillSpec,
     force: bool,
-    language: CodexSkillLanguage,
+    language: SkillLanguage,
 ) -> SkillInstallResult:
     skill_path = skills_dir / spec.name / "SKILL.md"
     if skill_path.exists() and not force:
@@ -63,7 +62,7 @@ def _install_skill(
             skill_name=spec.name,
             skill_path=skill_path,
             installed=False,
-    )
+        )
 
     skill_path.parent.mkdir(parents=True, exist_ok=True)
     _ = skill_path.write_text(
@@ -77,31 +76,31 @@ def _install_skill(
     )
 
 
-def _resolve_skills_dir(skills_dir: Path | None) -> Path:
+def _resolve_skills_dir(target: AgentTarget, skills_dir: Path | None) -> Path:
     if skills_dir is not None:
         return skills_dir.expanduser()
-    return DEFAULT_CODEX_SKILLS_DIR.expanduser()
+    return target.default_skills_dir.expanduser()
 
 
-def _resolve_language(language: CodexSkillLanguage) -> CodexSkillLanguage:
+def _resolve_language(language: SkillLanguage) -> SkillLanguage:
     match language:
-        case CodexSkillLanguage.EN | CodexSkillLanguage.KO:
+        case SkillLanguage.EN | SkillLanguage.KO:
             return language
-        case CodexSkillLanguage.AUTO:
+        case SkillLanguage.AUTO:
             return _language_from_locale()
 
 
-def _language_from_locale() -> CodexSkillLanguage:
+def _language_from_locale() -> SkillLanguage:
     locale_text = " ".join(
         os.environ.get(name, "") for name in ("LC_ALL", "LC_MESSAGES", "LANG")
     ).lower()
     if "ko" in locale_text or "kr" in locale_text:
-        return CodexSkillLanguage.KO
-    return CodexSkillLanguage.EN
+        return SkillLanguage.KO
+    return SkillLanguage.EN
 
 
-def _language_policy(language: CodexSkillLanguage) -> str:
-    if language is CodexSkillLanguage.KO:
+def _language_policy(language: SkillLanguage) -> str:
+    if language is SkillLanguage.KO:
         return """## 언어 정책
 
 - 사용자의 언어와 프로젝트 문서에서 주로 쓰는 언어를 따릅니다.
@@ -119,13 +118,11 @@ def _language_policy(language: CodexSkillLanguage) -> str:
 def _skill_text(
     spec: SkillSpec,
     tool_path: Path,
-    language: CodexSkillLanguage,
+    language: SkillLanguage,
 ) -> str:
     body = spec.body_template.format(tool_path=tool_path)
     description = (
-        spec.korean_description
-        if language is CodexSkillLanguage.KO
-        else spec.description
+        spec.korean_description if language is SkillLanguage.KO else spec.description
     )
     return f"""---
 name: {spec.name}

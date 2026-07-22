@@ -1,12 +1,14 @@
-"""Generated Codex skill templates."""
+"""Generated agent skill templates."""
 
 from dataclasses import dataclass
 from typing import Final
 
+from llm_wiki.agents import AgentTarget
+
 
 @dataclass(frozen=True, slots=True)
 class SkillSpec:
-    """A generated Codex skill specification."""
+    """A generated agent skill specification."""
 
     name: str
     description: str
@@ -14,28 +16,51 @@ class SkillSpec:
     body_template: str
 
 
-SKILL_SPECS: Final[tuple[SkillSpec, ...]] = (
+def skill_specs(target: AgentTarget) -> tuple[SkillSpec, ...]:
+    """Render the shared skill templates for one agent target."""
+    context = {
+        "agent": target.display_name,
+        "hook_dir": target.hook_dir_name,
+        "install_hooks_command": target.install_hooks_command,
+        "hook_event": target.hook_event,
+        "hook_config_rel": target.hook_config_rel,
+        "hook_script_rel": target.hook_script_rel,
+        "hook_trust_text": target.hook_trust_text,
+        "hook_choice_text": target.hook_choice_text,
+    }
+    return tuple(
+        SkillSpec(
+            name=spec.name,
+            description=spec.description.format(**context),
+            korean_description=spec.korean_description.format(**context),
+            body_template=spec.body_template.format(**context),
+        )
+        for spec in _TEMPLATE_SPECS
+    )
+
+
+_TEMPLATE_SPECS: Final[tuple[SkillSpec, ...]] = (
     SkillSpec(
         name="llm-wiki-init",
         description=(
             "Use this when a user wants to set up LLM Wiki globally or for a "
             "project, initialize wiki storage, create project-local AGENTS.md "
-            "instructions, connect Codex to a project wiki, configure "
+            "instructions, connect {agent} to a project wiki, configure "
             '~/.llm-wiki, or says phrases like "LLM Wiki 붙여줘", '
             '"init wiki", "프로젝트에 위키 세팅", "공통 위키 세팅", or '
-            '"Codex가 wiki 보게 해줘".'
+            '"{agent}가 wiki 보게 해줘".'
         ),
         korean_description=(
             "사용자가 LLM Wiki를 전역 또는 프로젝트에 설정하거나, 위키 저장소를 "
-            "초기화하거나, 프로젝트 AGENTS.md 지침을 만들거나, Codex가 프로젝트 "
+            "초기화하거나, 프로젝트 AGENTS.md 지침을 만들거나, {agent}가 프로젝트 "
             '위키를 보게 하려 할 때 사용합니다. "LLM Wiki 붙여줘", "init wiki", '
             '"프로젝트에 위키 세팅", "공통 위키 세팅" 같은 요청을 포함합니다.'
         ),
         body_template="""# LLM Wiki Init
 
 Use this skill to initialize either the global LLM Wiki home or a project wiki.
-The goal is to leave future Codex sessions able to retrieve the correct durable
-knowledge safely.
+The goal is to leave future {agent} sessions able to retrieve the correct
+durable knowledge safely.
 
 ## Workflow
 
@@ -43,13 +68,13 @@ knowledge safely.
 2. For global setup, run:
 
 ```bash
-uv run --directory {tool_path} llm-wiki init
+uv run --directory {{tool_path}} llm-wiki init
 ```
 
 3. For project setup, run:
 
 ```bash
-uv run --directory {tool_path} llm-wiki project init -p /path/to/project --agents
+uv run --directory {{tool_path}} llm-wiki project init -p /path/to/project --agents
 ```
 
 4. Verify the DB, config, docs folders, and any generated AGENTS.md exist.
@@ -95,7 +120,7 @@ project has a local wiki.
 4. Run:
 
 ```bash
-uv run --directory {tool_path} llm-wiki ask-context "<question>" \\
+uv run --directory {{tool_path}} llm-wiki ask-context "<question>" \\
   --db /path/to/project/.llm-wiki/wiki.db
 ```
 
@@ -145,7 +170,7 @@ tags: llm-wiki, project
 3. Index it with the selected project DB:
 
 ```bash
-uv run --directory {tool_path} llm-wiki add \\
+uv run --directory {{tool_path}} llm-wiki add \\
   /path/to/project/docs/references/example.md \\
   --db /path/to/project/.llm-wiki/wiki.db
 ```
@@ -153,7 +178,7 @@ uv run --directory {tool_path} llm-wiki add \\
 4. For global/common knowledge, index through global config resolution:
 
 ```bash
-uv run --directory {tool_path} llm-wiki add \\
+uv run --directory {{tool_path}} llm-wiki add \\
   ~/.llm-wiki/docs/references/example.md
 ```
 
@@ -196,7 +221,7 @@ test -f ~/.llm-wiki/config.toml
 For each Markdown file, run:
 
 ```bash
-uv run --directory {tool_path} llm-wiki add /path/to/project/docs/<file>.md \\
+uv run --directory {{tool_path}} llm-wiki add /path/to/project/docs/<file>.md \\
   --db /path/to/project/.llm-wiki/wiki.db
 ```
 
@@ -212,21 +237,21 @@ and confirm no files were deleted.
     SkillSpec(
         name="llm-wiki-hooks",
         description=(
-            "Use this when a user wants Codex hooks for LLM Wiki, automatic "
-            "wiki context injection before prompts, project-local .codex hook "
-            "setup, hook trust guidance, or says phrases like "
-            '"훅 만들어", "Codex hook 붙여", "자동으로 위키 보게 해줘".'
+            "Use this when a user wants {agent} hooks for LLM Wiki, automatic "
+            "wiki context injection before prompts, project-local {hook_dir} "
+            "hook setup, hook trust guidance, or says phrases like "
+            '"훅 만들어", "{agent} hook 붙여", "자동으로 위키 보게 해줘".'
         ),
         korean_description=(
-            "사용자가 LLM Wiki용 Codex hook을 설치하거나, 프롬프트 전에 위키 "
-            "컨텍스트를 자동 주입하거나, 프로젝트 .codex hook 설정과 trust "
-            '절차를 원할 때 사용합니다. "훅 만들어", "Codex hook 붙여", '
+            "사용자가 LLM Wiki용 {agent} hook을 설치하거나, 프롬프트 전에 위키 "
+            "컨텍스트를 자동 주입하거나, 프로젝트 {hook_dir} hook 설정과 trust "
+            '절차를 원할 때 사용합니다. "훅 만들어", "{agent} hook 붙여", '
             '"자동으로 위키 보게 해줘" 같은 요청을 포함합니다.'
         ),
         body_template="""# LLM Wiki Hooks
 
-Use this skill to install and verify project-local Codex hooks for LLM Wiki.
-Hooks are opt-in per project because they run automatically in the Codex loop.
+Use this skill to install and verify project-local {agent} hooks for LLM Wiki.
+Hooks are opt-in per project because they run automatically in the {agent} loop.
 
 ## Workflow
 
@@ -234,44 +259,36 @@ Hooks are opt-in per project because they run automatically in the Codex loop.
 2. Install the hook:
 
 ```bash
-uv run --directory {tool_path} llm-wiki codex install-hooks -p /path/to/project
+uv run --directory {{tool_path}} {install_hooks_command} -p /path/to/project
 ```
 
 3. Verify generated files:
 
 ```bash
-test -f /path/to/project/.codex/hooks.json
-test -f /path/to/project/.codex/hooks/llm_wiki_user_prompt.py
-grep "UserPromptSubmit" /path/to/project/.codex/hooks.json
-grep "llm-wiki ask-context" /path/to/project/.codex/hooks/llm_wiki_user_prompt.py
+test -f /path/to/project/{hook_config_rel}
+test -f /path/to/project/{hook_script_rel}
+grep "{hook_event}" /path/to/project/{hook_config_rel}
+grep "llm-wiki ask-context" /path/to/project/{hook_script_rel}
 ```
 
-4. Tell the user to open Codex `/hooks`, review the new project hook, and trust
-   it before expecting automatic execution.
+4. {hook_trust_text}
 
 ## Behavior
 
-The generated hook runs on `UserPromptSubmit`. It is read-only: it checks for a
+The generated hook runs on `{hook_event}`. It is read-only: it checks for a
 project `.llm-wiki/config.toml`, `LLM_WIKI_DB`, or `LLM_WIKI_HOME`, runs
 `llm-wiki ask-context`, and returns `additionalContext` only when context exists.
 
 ## Hook Choice
 
-- `UserPromptSubmit` is the default because it runs right before the user prompt
-  is sent and can add model-visible Wiki context.
-- `SessionStart` is acceptable later for light startup guidance, such as saying
-  that the project has LLM Wiki configured. Do not use it for full recall search.
-- `PreToolUse` and `PostToolUse` are better for command/file guardrails, not
-  normal Wiki retrieval.
-- Do not use `Stop` or `PostCompact` to auto-promote content into Wiki. Promotion
-  should stay explicit through `llm-wiki-promote`.
+{hook_choice_text}
 
 Do not install global hooks by default. Do not auto-promote content from hooks.
 
 ## Final Response
 
-Report the project path, generated `hooks.json`, generated script path, and
-whether the user still needs to trust it in `/hooks`.
+Report the project path, generated `{hook_config_rel}`, generated script path,
+and any remaining trust or approval step.
 """,
     ),
 )

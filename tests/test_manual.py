@@ -16,6 +16,15 @@ def test_manual_mentions_init_codex_and_agent_memory() -> None:
     assert "llm-wiki project init -p" in combined
     assert "llm-wiki codex install-skill" in combined
     assert "llm-wiki codex install-hooks" in combined
+    assert "llm-wiki claude install-skill" in combined
+    assert "llm-wiki claude install-hooks" in combined
+    assert "llm-wiki gemini install-skill" in combined
+    assert "llm-wiki gemini install-hooks" in combined
+    assert "~/.claude/skills" in combined
+    assert "~/.gemini/skills" in combined
+    assert ".claude/settings.json" in combined
+    assert ".gemini/settings.json" in combined
+    assert "BeforeAgent" in combined
     assert "UserPromptSubmit" in combined
     assert "SessionStart" in combined
     assert "PreToolUse" in combined
