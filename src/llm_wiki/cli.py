@@ -6,8 +6,9 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from llm_wiki.codex import CodexSkillLanguage, install_codex_skill
-from llm_wiki.codex_hooks import install_codex_hooks
+from llm_wiki.agent_hooks import install_agent_hooks
+from llm_wiki.agent_skills import SkillLanguage, install_agent_skills
+from llm_wiki.agents import CLAUDE_TARGET, CODEX_TARGET, GEMINI_TARGET, AgentTarget
 from llm_wiki.config import resolve_db_path
 from llm_wiki.errors import WikiError
 from llm_wiki.init_project import InitResult, initialize_global, initialize_project
@@ -19,6 +20,8 @@ DEFAULT_LIMIT = 5
 
 app = typer.Typer(no_args_is_help=True)
 codex_app = typer.Typer(no_args_is_help=True)
+claude_app = typer.Typer(no_args_is_help=True)
+gemini_app = typer.Typer(no_args_is_help=True)
 project_app = typer.Typer(no_args_is_help=True)
 console = Console(markup=False, width=1000)
 
@@ -73,15 +76,25 @@ ToolPathOption = Annotated[
     ),
 ]
 LanguageOption = Annotated[
-    CodexSkillLanguage,
+    SkillLanguage,
     typer.Option(
         "--language",
         help="Generated skill language.",
     ),
 ]
+SkillForceOption = Annotated[
+    bool,
+    typer.Option("--force", help="Overwrite existing generated LLM Wiki skills."),
+]
+HookForceOption = Annotated[
+    bool,
+    typer.Option("--force", help="Overwrite the generated hook script."),
+]
 
 
 app.add_typer(codex_app, name="codex", help="Install Codex integrations.")
+app.add_typer(claude_app, name="claude", help="Install Claude Code integrations.")
+app.add_typer(gemini_app, name="gemini", help="Install Gemini CLI integrations.")
 app.add_typer(project_app, name="project", help="Manage project-local wiki state.")
 
 
@@ -120,48 +133,58 @@ def _print_init_result(result: InitResult) -> None:
         console.print(f"agents: {result.agents_path}")
 
 
-@codex_app.command("install-skill")
-def codex_install_skill(
-    skills_dir: SkillsDirOption = None,
-    tool_path: ToolPathOption = None,
-    language: LanguageOption = CodexSkillLanguage.AUTO,
-    force: Annotated[
-        bool,
-        typer.Option("--force", help="Overwrite an existing LLM Wiki Codex skill."),
-    ] = False,
-) -> None:
-    """Install the LLM Wiki Codex skills."""
-    results = install_codex_skill(
-        skills_dir=skills_dir,
-        tool_path=tool_path,
-        force=force,
-        language=language,
-    )
-    for result in results:
-        if result.installed:
-            console.print(f"installed Codex skill: {result.skill_path}")
-        else:
-            console.print(f"Codex skill already exists: {result.skill_path}")
+def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> None:
+    def install_skill_command(
+        skills_dir: SkillsDirOption = None,
+        tool_path: ToolPathOption = None,
+        language: LanguageOption = SkillLanguage.AUTO,
+        force: SkillForceOption = False,
+    ) -> None:
+        results = install_agent_skills(
+            target=target,
+            skills_dir=skills_dir,
+            tool_path=tool_path,
+            force=force,
+            language=language,
+        )
+        for result in results:
+            if result.installed:
+                console.print(
+                    f"installed {target.display_name} skill: {result.skill_path}",
+                )
+            else:
+                console.print(
+                    f"{target.display_name} skill already exists: {result.skill_path}",
+                )
+
+    def install_hooks_command(
+        path: ProjectPathOption = None,
+        tool_path: ToolPathOption = None,
+        force: HookForceOption = False,
+    ) -> None:
+        project_path = Path.cwd() if path is None else path
+        result = install_agent_hooks(
+            target=target,
+            project_path=project_path,
+            tool_path=tool_path,
+            force=force,
+        )
+        console.print(f"installed {target.display_name} hooks: {result.hooks_path}")
+        console.print(f"script: {result.script_path}")
+
+    _ = agent_app.command(
+        "install-skill",
+        help=f"Install the LLM Wiki {target.display_name} skills.",
+    )(install_skill_command)
+    _ = agent_app.command(
+        "install-hooks",
+        help=f"Install project-local {target.display_name} hooks for LLM Wiki.",
+    )(install_hooks_command)
 
 
-@codex_app.command("install-hooks")
-def codex_install_hooks(
-    path: ProjectPathOption = None,
-    tool_path: ToolPathOption = None,
-    force: Annotated[
-        bool,
-        typer.Option("--force", help="Overwrite the generated hook script."),
-    ] = False,
-) -> None:
-    """Install project-local Codex hooks for LLM Wiki."""
-    project_path = Path.cwd() if path is None else path
-    result = install_codex_hooks(
-        project_path=project_path,
-        tool_path=tool_path,
-        force=force,
-    )
-    console.print(f"installed Codex hooks: {result.hooks_path}")
-    console.print(f"script: {result.script_path}")
+_register_install_commands(codex_app, CODEX_TARGET)
+_register_install_commands(claude_app, CLAUDE_TARGET)
+_register_install_commands(gemini_app, GEMINI_TARGET)
 
 
 @app.command()

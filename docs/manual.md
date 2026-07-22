@@ -219,7 +219,70 @@ uv run --directory /path/to/llm-wiki llm-wiki ask-context "example"
 If the common wiki lives somewhere else, set `LLM_WIKI_HOME=/path/to/common/wiki`
 and write under `$LLM_WIKI_HOME/docs/` instead.
 
-## 7. Agent Memory Handoff
+## 7. Claude Code Integration
+
+Install the same five LLM Wiki skills for Claude Code:
+
+```bash
+llm-wiki claude install-skill
+```
+
+By default this writes generated `SKILL.md` files under
+`~/.claude/skills/llm-wiki-*`. The `--skills-dir`, `--tool-path`, `--language`,
+and `--force` options behave exactly like the Codex installer.
+
+Install project-local Claude Code hooks:
+
+```bash
+llm-wiki claude install-hooks -p /path/to/project
+```
+
+This writes:
+
+```text
+/path/to/project/.claude/settings.json
+/path/to/project/.claude/hooks/llm_wiki_user_prompt.py
+```
+
+The hook is merged into the `hooks.UserPromptSubmit` section of
+`.claude/settings.json`; other settings in that file are preserved. Like the
+Codex hook, it is read-only and adds `additionalContext` only when Wiki context
+exists. Claude Code requires hooks changed outside the app to be reviewed in
+`/hooks` before they run.
+
+## 8. Gemini CLI Integration
+
+Install the same five LLM Wiki skills for Gemini CLI:
+
+```bash
+llm-wiki gemini install-skill
+```
+
+By default this writes generated `SKILL.md` files under
+`~/.gemini/skills/llm-wiki-*`. Gemini CLI reads the same `SKILL.md` format, so
+the options and generated content match the other installers.
+
+Install project-local Gemini CLI hooks:
+
+```bash
+llm-wiki gemini install-hooks -p /path/to/project
+```
+
+This writes:
+
+```text
+/path/to/project/.gemini/settings.json
+/path/to/project/.gemini/hooks/llm_wiki_user_prompt.py
+```
+
+Gemini CLI has no `UserPromptSubmit` event; the equivalent is `BeforeAgent`,
+which runs right before the agent handles the submitted prompt. The hook is
+merged into the `hooks.BeforeAgent` section of `.gemini/settings.json` with a
+5000 ms timeout (Gemini hook timeouts are in milliseconds), and other settings
+in that file are preserved. Restart Gemini CLI after installing so the settings
+are reloaded, and trust the project folder when prompted.
+
+## 9. Agent Memory Handoff
 
 Agent Memory is useful for temporary working observations and session recall.
 LLM Wiki is for durable, reviewed knowledge. When an observation becomes a
