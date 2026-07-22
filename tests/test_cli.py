@@ -481,6 +481,191 @@ def test_codex_install_hooks_preserves_existing_hooks_json(tmp_path: Path) -> No
     )
 
 
+def test_claude_install_skill_writes_all_llm_wiki_skills(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills"
+    tool_path = tmp_path / "tool"
+
+    install_result = runner.invoke(
+        app,
+        [
+            "claude",
+            "install-skill",
+            "--skills-dir",
+            str(skills_dir),
+            "--tool-path",
+            str(tool_path),
+        ],
+    )
+
+    expected_skill_names = (
+        "llm-wiki-init",
+        "llm-wiki-recall",
+        "llm-wiki-promote",
+        "llm-wiki-maintain",
+        "llm-wiki-hooks",
+    )
+    assert install_result.exit_code == 0
+    for skill_name in expected_skill_names:
+        skill_path = skills_dir / skill_name / "SKILL.md"
+        skill_text = skill_path.read_text(encoding="utf-8")
+        assert f"installed Claude Code skill: {skill_path}" in install_result.output
+        assert f"name: {skill_name}" in skill_text
+        assert f"uv run --directory {tool_path}" in skill_text
+        assert "Codex" not in skill_text
+
+    init_text = (skills_dir / "llm-wiki-init" / "SKILL.md").read_text(encoding="utf-8")
+    hooks_text = (skills_dir / "llm-wiki-hooks" / "SKILL.md").read_text(
+        encoding="utf-8",
+    )
+    assert "Claude Code" in init_text
+    assert "llm-wiki claude install-hooks" in hooks_text
+    assert ".claude/settings.json" in hooks_text
+    assert ".claude/hooks/llm_wiki_user_prompt.py" in hooks_text
+    assert "UserPromptSubmit" in hooks_text
+    assert "Do not use `Stop`" in hooks_text
+
+
+def test_gemini_install_skill_writes_before_agent_guidance(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills"
+    tool_path = tmp_path / "tool"
+
+    install_result = runner.invoke(
+        app,
+        [
+            "gemini",
+            "install-skill",
+            "--skills-dir",
+            str(skills_dir),
+            "--tool-path",
+            str(tool_path),
+        ],
+    )
+
+    hooks_text = (skills_dir / "llm-wiki-hooks" / "SKILL.md").read_text(
+        encoding="utf-8",
+    )
+    assert install_result.exit_code == 0
+    assert "installed Gemini CLI skill:" in install_result.output
+    assert (skills_dir / "llm-wiki-recall" / "SKILL.md").is_file()
+    assert "llm-wiki gemini install-hooks" in hooks_text
+    assert ".gemini/settings.json" in hooks_text
+    assert "BeforeAgent" in hooks_text
+    assert "Do not use `AfterAgent`" in hooks_text
+    assert "UserPromptSubmit" not in hooks_text
+    assert "Codex" not in hooks_text
+
+
+def test_claude_install_hooks_writes_user_prompt_hook(tmp_path: Path) -> None:
+    project_path = tmp_path / "project"
+    tool_path = tmp_path / "tool"
+    project_path.mkdir()
+
+    install_result = runner.invoke(
+        app,
+        [
+            "claude",
+            "install-hooks",
+            "-p",
+            str(project_path),
+            "--tool-path",
+            str(tool_path),
+        ],
+    )
+
+    settings_path = project_path / ".claude" / "settings.json"
+    script_path = project_path / ".claude" / "hooks" / "llm_wiki_user_prompt.py"
+    settings_data = json.loads(settings_path.read_text(encoding="utf-8"))
+    script_text = script_path.read_text(encoding="utf-8")
+    hook_entry = settings_data["hooks"]["UserPromptSubmit"][0]["hooks"][0]
+    assert install_result.exit_code == 0
+    assert "installed Claude Code hooks" in install_result.output
+    assert script_path.is_file()
+    assert str(script_path) in hook_entry["command"]
+    assert hook_entry["timeout"] == 5
+    assert "statusMessage" not in hook_entry
+    assert "llm-wiki ask-context" in script_text
+    assert '"hookEventName": "UserPromptSubmit"' in script_text
+
+
+def test_claude_install_hooks_preserves_existing_settings(tmp_path: Path) -> None:
+    project_path = tmp_path / "project"
+    claude_dir = project_path / ".claude"
+    claude_dir.mkdir(parents=True)
+    settings_path = claude_dir / "settings.json"
+    _ = settings_path.write_text(
+        json.dumps(
+            {
+                "permissions": {"allow": ["Bash(ls:*)"]},
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "Bash",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "python3 existing.py",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    first_result = runner.invoke(
+        app, ["claude", "install-hooks", "-p", str(project_path)]
+    )
+    second_result = runner.invoke(
+        app,
+        ["claude", "install-hooks", "-p", str(project_path)],
+    )
+
+    settings_data = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert first_result.exit_code == 0
+    assert second_result.exit_code == 0
+    assert settings_data["permissions"] == {"allow": ["Bash(ls:*)"]}
+    assert settings_data["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == (
+        "python3 existing.py"
+    )
+    assert len(settings_data["hooks"]["UserPromptSubmit"]) == 1
+    assert len(settings_data["hooks"]["UserPromptSubmit"][0]["hooks"]) == 1
+
+
+def test_gemini_install_hooks_writes_before_agent_hook(tmp_path: Path) -> None:
+    project_path = tmp_path / "project"
+    tool_path = tmp_path / "tool"
+    project_path.mkdir()
+
+    install_result = runner.invoke(
+        app,
+        [
+            "gemini",
+            "install-hooks",
+            "-p",
+            str(project_path),
+            "--tool-path",
+            str(tool_path),
+        ],
+    )
+
+    settings_path = project_path / ".gemini" / "settings.json"
+    script_path = project_path / ".gemini" / "hooks" / "llm_wiki_user_prompt.py"
+    settings_data = json.loads(settings_path.read_text(encoding="utf-8"))
+    script_text = script_path.read_text(encoding="utf-8")
+    hook_entry = settings_data["hooks"]["BeforeAgent"][0]["hooks"][0]
+    assert install_result.exit_code == 0
+    assert "installed Gemini CLI hooks" in install_result.output
+    assert str(script_path) in hook_entry["command"]
+    assert hook_entry["timeout"] == 5000
+    assert hook_entry["name"] == "llm-wiki-context"
+    assert "llm-wiki ask-context" in script_text
+    assert "hookSpecificOutput" in script_text
+    assert "additionalContext" in script_text
+    assert "hookEventName" not in script_text
+
+
 def test_init_creates_home_wiki_layout(tmp_path: Path) -> None:
     home_path = tmp_path / "home-wiki"
 

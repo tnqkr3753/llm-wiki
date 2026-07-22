@@ -68,6 +68,19 @@ Review and trust the hook with Codex `/hooks` before it runs.
 `SessionStart` can be added later for light startup guidance, but `PreToolUse`,
 `PostToolUse`, and `Stop` are not good defaults for Wiki recall.
 
+The same integrations are available for Claude Code and Gemini CLI:
+
+```bash
+llm-wiki claude install-skill                       # ~/.claude/skills/llm-wiki-*
+llm-wiki claude install-hooks -p /path/to/project   # .claude/settings.json (UserPromptSubmit)
+llm-wiki gemini install-skill                       # ~/.gemini/skills/llm-wiki-*
+llm-wiki gemini install-hooks -p /path/to/project   # .gemini/settings.json (BeforeAgent)
+```
+
+Claude Code uses the same `UserPromptSubmit` event and reviews externally added
+hooks in `/hooks`. Gemini CLI uses its `BeforeAgent` event instead, and the
+hook entry uses a millisecond timeout as Gemini expects.
+
 Installed Codex skills:
 
 | Skill | Description |
