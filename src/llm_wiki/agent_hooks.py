@@ -222,29 +222,30 @@ def _remove_hook(
     if not isinstance(hooks_value, dict):
         return
 
-    event_value = hooks_value.get(target.hook_event)
-    if not isinstance(event_value, list):
-        return
+    wiki_scripts = ("llm_wiki_user_prompt.py", "llm_wiki_startup.py", "llm_wiki_stop.py", "llm_wiki_guardrail.py")
 
-    script_name = HOOK_SCRIPT_NAME
-    new_event_value = []
-    for group in event_value:
-        if not isinstance(group, dict):
-            new_event_value.append(group)
+    for event_name, event_value in list(hooks_value.items()):
+        if not isinstance(event_value, list):
             continue
-        hooks = group.get("hooks")
-        if not isinstance(hooks, list):
-            new_event_value.append(group)
-            continue
-        filtered_hooks = [
-            h for h in hooks
-            if not (isinstance(h, dict) and script_name in str(h.get("command", "")))
-        ]
-        if filtered_hooks:
-            group["hooks"] = filtered_hooks
-            new_event_value.append(group)
 
-    hooks_value[target.hook_event] = new_event_value
+        new_event_value = []
+        for group in event_value:
+            if not isinstance(group, dict):
+                new_event_value.append(group)
+                continue
+            hooks = group.get("hooks")
+            if not isinstance(hooks, list):
+                new_event_value.append(group)
+                continue
+            filtered_hooks = [
+                h for h in hooks
+                if not (isinstance(h, dict) and any(s in str(h.get("command", "")) for s in wiki_scripts))
+            ]
+            if filtered_hooks:
+                group["hooks"] = filtered_hooks
+                new_event_value.append(group)
+
+        hooks_value[event_name] = new_event_value
 
 
 def _load_hooks_json(hooks_path: Path) -> dict[str, JsonValue]:
