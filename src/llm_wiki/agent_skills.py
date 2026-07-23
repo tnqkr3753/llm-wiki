@@ -28,13 +28,14 @@ class SkillInstallResult:
 
 def install_agent_skills(
     target: AgentTarget,
-    skills_dir: Path | None,
-    tool_path: Path | None,
-    force: bool,
-    language: SkillLanguage,
+    skills_dir: Path | None = None,
+    project_path: Path | None = None,
+    tool_path: Path | None = None,
+    force: bool = True,
+    language: SkillLanguage = SkillLanguage.AUTO,
 ) -> tuple[SkillInstallResult, ...]:
-    """Install all LLM Wiki skills into an agent skills directory."""
-    resolved_skills_dir = _resolve_skills_dir(target, skills_dir)
+    """Install LLM Wiki skills globally, into a project, or into a specific skills dir."""
+    resolved_skills_dir = _resolve_skills_dir(target, skills_dir, project_path)
     resolved_tool_path = TOOL_REPO_PATH if tool_path is None else tool_path
     resolved_language = _resolve_language(language)
     return tuple(
@@ -76,10 +77,40 @@ def _install_skill(
     )
 
 
-def _resolve_skills_dir(target: AgentTarget, skills_dir: Path | None) -> Path:
+def uninstall_agent_skills(
+    target: AgentTarget,
+    skills_dir: Path | None = None,
+    project_path: Path | None = None,
+    is_global: bool = False,
+) -> tuple[Path, ...]:
+    """Uninstall LLM Wiki skills from global home, a project, or a specific skills dir."""
+    if is_global:
+        resolved_dir = target.default_skills_dir.expanduser().resolve()
+    else:
+        resolved_dir = _resolve_skills_dir(target, skills_dir, project_path)
+
+    removed: list[Path] = []
+    for spec in skill_specs(target):
+        skill_file = resolved_dir / spec.name / "SKILL.md"
+        skill_dir = resolved_dir / spec.name
+        if skill_file.exists():
+            skill_file.unlink()
+            removed.append(skill_file)
+        if skill_dir.exists() and not any(skill_dir.iterdir()):
+            skill_dir.rmdir()
+    return tuple(removed)
+
+
+def _resolve_skills_dir(
+    target: AgentTarget,
+    skills_dir: Path | None,
+    project_path: Path | None = None,
+) -> Path:
     if skills_dir is not None:
-        return skills_dir.expanduser()
-    return target.default_skills_dir.expanduser()
+        return skills_dir.expanduser().resolve()
+    if project_path is not None:
+        return (project_path.expanduser().resolve() / target.hook_dir_name / "skills")
+    return target.default_skills_dir.expanduser().resolve()
 
 
 def _resolve_language(language: SkillLanguage) -> SkillLanguage:
