@@ -7,6 +7,7 @@ from contextlib import closing
 from pathlib import Path
 
 from llm_wiki.errors import DocumentNotFoundError, SqlColumnTypeError
+from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import DocumentId, ParsedDocument, SearchResult, StoredDocument
 
 type SqlValue = str | int | float | bytes | None
@@ -21,13 +22,27 @@ CREATE TABLE IF NOT EXISTS documents (
     tags TEXT NOT NULL,
     body TEXT NOT NULL
 );
+"""
 
+SCHEMA_FTS_TRIGRAM = """
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
     title,
     body,
     tags,
     content='documents',
-    content_rowid='id'
+    content_rowid='id',
+    tokenize='trigram'
+);
+"""
+
+SCHEMA_FTS_UNICODE61 = """
+CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+    title,
+    body,
+    tags,
+    content='documents',
+    content_rowid='id',
+    tokenize='unicode61 remove_diacritics 2'
 );
 """
 
@@ -37,6 +52,34 @@ def initialize(db_path: Path) -> None:
     _ensure_parent(db_path)
     with closing(sqlite3.connect(db_path)) as connection:
         _ = connection.executescript(SCHEMA)
+
+        # Ensure documents_fts exists with trigram (or fallback unicode61)
+        tables = _fetch_all(
+            connection,
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='documents_fts'",
+            (),
+        )
+        if not tables:
+            try:
+                _ = connection.executescript(SCHEMA_FTS_TRIGRAM)
+            except sqlite3.OperationalError:
+                _ = connection.executescript(SCHEMA_FTS_UNICODE61)
+        else:
+            # Rebuild FTS index if table structure is present
+            sql_text = str(tables[0][0]) if tables[0] and tables[0][0] else ""
+            if "trigram" not in sql_text:
+                try:
+                    _ = connection.execute("DROP TABLE IF EXISTS documents_fts")
+                    _ = connection.executescript(SCHEMA_FTS_TRIGRAM)
+                    _ = connection.execute(
+                        """
+                        INSERT INTO documents_fts (rowid, title, body, tags)
+                        SELECT id, title, body, tags FROM documents
+                        """
+                    )
+                except sqlite3.OperationalError:
+                    pass
+
         connection.commit()
 
 
@@ -85,7 +128,9 @@ def upsert_document(db_path: Path, document: ParsedDocument) -> DocumentId:
         return document_id
 
 
-def search(db_path: Path, query: str, limit: int) -> list[SearchResult]:
+def search(
+    db_path: Path, query: str, limit: int, min_score: float = 0.0
+) -> list[SearchResult]:
     """Search indexed documents with SQLite FTS5."""
     initialize(db_path)
     fts_query = _literal_fts_query(query)
@@ -100,16 +145,23 @@ def search(db_path: Path, query: str, limit: int) -> list[SearchResult]:
                 d.path,
                 d.title,
                 d.tags,
-                snippet(documents_fts, 1, '', '', ' ... ', 18) AS snippet
+                snippet(documents_fts, 1, '', '', ' ... ', 18) AS snippet,
+                -bm25(documents_fts) AS bm25_score
             FROM documents_fts
             JOIN documents d ON d.id = documents_fts.rowid
             WHERE documents_fts MATCH ?
-            ORDER BY rank
+            ORDER BY bm25_score DESC
             LIMIT ?
             """,
             (fts_query, limit),
         )
-    return [_result_from_row(row) for row in rows]
+
+    results = []
+    for row in rows:
+        bm25_score = float(row[5]) if len(row) > 5 and row[5] is not None else 0.0
+        if bm25_score >= min_score:
+            results.append(_result_from_row(row))
+    return results
 
 
 def get_document(db_path: Path, document_id: DocumentId) -> StoredDocument:
@@ -162,7 +214,12 @@ def _normalize_sql_value(value: SqlValue) -> SqlValue:
 
 
 def _literal_fts_query(query: str) -> str:
-    tokens = re.findall(r"\w+", query)
+    tokens = re.findall(
+        r"[\w\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]+",
+        query,
+    )
+    if not tokens:
+        return ""
     return " ".join(f'"{token}"' for token in tokens)
 
 
@@ -202,3 +259,18 @@ def _document_from_row(row: SqlRow) -> StoredDocument:
         tags=_split_tags(_row_str(row, 3)),
         body=_row_str(row, 4),
     )
+
+
+def reindex_directory(db_path: Path, root_path: Path) -> int:
+    """Reindex all markdown files in root_path into db_path."""
+    indexed = 0
+    for file_path in root_path.rglob("*.md"):
+        if any(part.startswith(".") or part in ("venv", "node_modules", "__pycache__") for part in file_path.parts):
+            continue
+        try:
+            doc = parse_markdown_file(file_path)
+            upsert_document(db_path, doc)
+            indexed += 1
+        except Exception:
+            pass
+    return indexed

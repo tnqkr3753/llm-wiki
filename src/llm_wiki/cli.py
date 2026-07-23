@@ -16,6 +16,11 @@ from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import DocumentId
 from llm_wiki.store import get_document, search, upsert_document
 
+from llm_wiki.doctor import run_doctor
+from llm_wiki.git_hook import install_git_hook
+from llm_wiki.hook_stats import show_hook_stats
+from llm_wiki.watcher import run_watcher
+
 DEFAULT_LIMIT = 5
 
 app = typer.Typer(no_args_is_help=True)
@@ -23,6 +28,7 @@ codex_app = typer.Typer(no_args_is_help=True)
 claude_app = typer.Typer(no_args_is_help=True)
 gemini_app = typer.Typer(no_args_is_help=True)
 project_app = typer.Typer(no_args_is_help=True)
+git_hook_app = typer.Typer(no_args_is_help=True)
 console = Console(markup=False, width=1000)
 
 DbOption = Annotated[
@@ -96,6 +102,7 @@ app.add_typer(codex_app, name="codex", help="Install Codex integrations.")
 app.add_typer(claude_app, name="claude", help="Install Claude Code integrations.")
 app.add_typer(gemini_app, name="gemini", help="Install Gemini CLI integrations.")
 app.add_typer(project_app, name="project", help="Manage project-local wiki state.")
+app.add_typer(git_hook_app, name="git-hook", help="Manage Git hooks for LLM Wiki.")
 
 
 @app.command()
@@ -255,10 +262,11 @@ def ask_context(
     query: Annotated[str, typer.Argument(help="Question or retrieval query.")],
     db: DbOption = None,
     limit: LimitOption = 3,
+    min_score: Annotated[float, typer.Option(help="Minimum BM25 score threshold.")] = 0.0,
 ) -> None:
     """Print grounded snippets to paste into an LLM prompt."""
     try:
-        results = search(resolve_db_path(db), query, limit)
+        results = search(resolve_db_path(db), query, limit, min_score=min_score)
     except WikiError as exc:
         console.print(f"Error: {exc}")
         raise typer.Exit(1) from exc
@@ -270,3 +278,39 @@ def ask_context(
     for result in results:
         console.print(f"- [{int(result.id)}] {result.title} ({result.path})")
         console.print(f"  {result.snippet}")
+
+
+@app.command("doctor")
+def doctor(
+    path: ProjectPathOption = None,
+) -> None:
+    """Run diagnostics on Python, SQLite FTS5, project config, skills, and hooks."""
+    run_doctor(path)
+
+
+@app.command("hook-stats")
+def hook_stats() -> None:
+    """Report session hook performance and estimated token savings statistics."""
+    show_hook_stats()
+
+
+@app.command("watch")
+def watch(
+    path: ProjectPathOption = None,
+    interval: Annotated[float, typer.Option(help="Poll interval in seconds.")] = 2.0,
+) -> None:
+    """Continuously watch markdown files and auto-reindex on change."""
+    run_watcher(path, interval)
+
+
+@git_hook_app.command("install")
+def git_hook_install(
+    path: ProjectPathOption = None,
+    force: Annotated[bool, typer.Option("--force", help="Overwrite existing post-commit hook.")] = False,
+) -> None:
+    """Install a Git post-commit hook that automatically reindexes LLM Wiki."""
+    try:
+        install_git_hook(path, force=force)
+    except ValueError as exc:
+        console.print(f"Error: {exc}")
+        raise typer.Exit(1) from exc

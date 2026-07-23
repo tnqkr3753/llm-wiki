@@ -144,12 +144,14 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 TOOL_PATH = {tool_path_text!r}
 MAX_CONTEXT_CHARS = int(os.environ.get("LLM_WIKI_MAX_CONTEXT_CHARS", 2000))
 MIN_CONTEXT_CHARS = int(os.environ.get("LLM_WIKI_MIN_CONTEXT_CHARS", 100))
 MIN_PROMPT_CHARS = int(os.environ.get("LLM_WIKI_MIN_PROMPT_CHARS", 3))
+SESSION_TTL = int(os.environ.get("LLM_WIKI_SESSION_TTL", 1800))
 COMMAND_LABEL = "llm-wiki ask-context"
 
 
@@ -188,10 +190,11 @@ def main():
         return
 
     context_hash = hashlib.sha256(context.encode("utf-8")).hexdigest()
-    if is_duplicate_context(session_id, cwd, context_hash):
+    db_mtime = get_db_mtime(cwd)
+    if is_duplicate_context(session_id, cwd, context_hash, db_mtime):
         return
 
-    save_context_hash(session_id, cwd, context_hash)
+    save_context_hash(session_id, cwd, context_hash, db_mtime, len(context))
 
     context_text = "LLM Wiki context from " + COMMAND_LABEL + ":\\n" + context
     print(json.dumps(
@@ -239,24 +242,79 @@ def get_session_state_file(session_id, cwd):
     return temp_dir / ("llm_wiki_session_" + cwd_hash + ".json")
 
 
-def is_duplicate_context(session_id, cwd, context_hash):
+def get_db_mtime(cwd: Path) -> float:
+    try:
+        env_db = os.environ.get("LLM_WIKI_DB")
+        if env_db and Path(env_db).is_file():
+            return Path(env_db).stat().st_mtime
+        db_file = cwd / ".llm-wiki" / "wiki.db"
+        if db_file.is_file():
+            return db_file.stat().st_mtime
+        config_file = cwd / ".llm-wiki" / "config.toml"
+        if config_file.is_file():
+            return config_file.stat().st_mtime
+    except Exception:
+        pass
+    return 0.0
+
+
+def is_duplicate_context(session_id, cwd, context_hash, db_mtime):
     state_file = get_session_state_file(session_id, cwd)
     if not state_file.is_file():
         return False
     try:
         data = json.loads(state_file.read_text(encoding="utf-8"))
-        return isinstance(data, dict) and data.get("last_context_hash") == context_hash
+        if not isinstance(data, dict):
+            return False
+
+        if data.get("last_context_hash") != context_hash:
+            return False
+
+        # Invalidate if TTL expired
+        updated_at = float(data.get("updated_at", 0))
+        if time.time() - updated_at > SESSION_TTL:
+            return False
+
+        # Invalidate if DB modified since last cache
+        cached_mtime = float(data.get("cached_db_mtime", 0))
+        if db_mtime > 0 and cached_mtime > 0 and db_mtime > cached_mtime:
+            return False
+
+        # Track stats on duplicate hit
+        data["dedup_hits"] = int(data.get("dedup_hits", 0)) + 1
+        data["saved_chars"] = int(data.get("saved_chars", 0)) + int(data.get("context_len", 0))
+        data["updated_at"] = time.time()
+        state_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return True
     except Exception:
         return False
 
 
-def save_context_hash(session_id, cwd, context_hash):
+def save_context_hash(session_id, cwd, context_hash, db_mtime, context_len):
     state_file = get_session_state_file(session_id, cwd)
     try:
-        state_file.write_text(
-            json.dumps({{"last_context_hash": context_hash}}, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        existing_hits = 0
+        existing_saved_chars = 0
+        if state_file.is_file():
+            try:
+                old_data = json.loads(state_file.read_text(encoding="utf-8"))
+                if isinstance(old_data, dict):
+                    existing_hits = int(old_data.get("dedup_hits", 0))
+                    existing_saved_chars = int(old_data.get("saved_chars", 0))
+            except Exception:
+                pass
+
+        data = {{
+            "last_context_hash": context_hash,
+            "updated_at": time.time(),
+            "cached_db_mtime": db_mtime,
+            "context_len": context_len,
+            "session_id": str(session_id),
+            "cwd": str(cwd),
+            "dedup_hits": existing_hits,
+            "saved_chars": existing_saved_chars,
+        }}
+        state_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
 

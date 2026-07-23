@@ -116,3 +116,5 @@ GEMINI_TARGET: Final = AgentTarget(
 - Do not use `AfterAgent` or `SessionEnd` to auto-promote content into Wiki.
   Promotion should stay explicit through `llm-wiki-promote`.""",
 )
+
+ALL_TARGETS: Final = (CODEX_TARGET, CLAUDE_TARGET, GEMINI_TARGET)
