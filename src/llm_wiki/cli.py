@@ -181,10 +181,12 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
 
     def uninstall_hooks_command(
         path: ProjectPathOption = None,
+        is_global: Annotated[bool, typer.Option("-g", "--global", help="Uninstall global agent hooks.")] = False,
     ) -> None:
         project_path = Path.cwd() if path is None else path
-        uninstall_agent_hooks(target=target, project_path=project_path)
-        console.print(f"[green]✓[/green] uninstalled {target.display_name} hooks from {project_path}")
+        uninstall_agent_hooks(target=target, project_path=project_path, is_global=is_global)
+        loc_str = "global home" if is_global else str(project_path)
+        console.print(f"[green]✓[/green] uninstalled {target.display_name} hooks ({loc_str})")
 
     _ = agent_app.command(
         "install-skill",
@@ -196,7 +198,7 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
     )(install_hooks_command)
     _ = agent_app.command(
         "uninstall-hooks",
-        help=f"Uninstall project-local {target.display_name} hooks for LLM Wiki.",
+        help=f"Uninstall {target.display_name} hooks for LLM Wiki.",
     )(uninstall_hooks_command)
 
 

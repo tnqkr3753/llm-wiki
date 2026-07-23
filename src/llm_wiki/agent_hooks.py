@@ -53,11 +53,16 @@ def install_agent_hooks(
 
 def uninstall_agent_hooks(
     target: AgentTarget,
-    project_path: Path,
+    project_path: Path | None = None,
+    is_global: bool = False,
 ) -> bool:
-    """Uninstall project-local agent hooks for LLM Wiki recall."""
-    resolved_project_path = project_path.expanduser().resolve()
-    config_dir = resolved_project_path / target.hook_dir_name
+    """Uninstall agent hooks for LLM Wiki recall (project-local or global)."""
+    if is_global:
+        config_dir = Path(f"~/{target.hook_dir_name}").expanduser().resolve()
+    else:
+        resolved_project_path = (project_path or Path.cwd()).expanduser().resolve()
+        config_dir = resolved_project_path / target.hook_dir_name
+
     hooks_path = config_dir / target.hook_config_name
     script_path = config_dir / "hooks" / HOOK_SCRIPT_NAME
 
@@ -71,6 +76,21 @@ def uninstall_agent_hooks(
             json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
+
+    # Also clean up global hook if uninstalling
+    global_config_dir = Path(f"~/{target.hook_dir_name}").expanduser().resolve()
+    if global_config_dir != config_dir:
+        global_hooks_path = global_config_dir / target.hook_config_name
+        global_script_path = global_config_dir / "hooks" / HOOK_SCRIPT_NAME
+        if global_script_path.exists():
+            global_script_path.unlink()
+        if global_hooks_path.exists():
+            global_data = _load_hooks_json(global_hooks_path)
+            _remove_hook(global_data, target, global_script_path)
+            global_hooks_path.write_text(
+                json.dumps(global_data, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
     return True
 
 
@@ -87,7 +107,7 @@ def _remove_hook(
     if not isinstance(event_value, list):
         return
 
-    script_path_str = str(script_path)
+    script_name = HOOK_SCRIPT_NAME
     new_event_value = []
     for group in event_value:
         if not isinstance(group, dict):
@@ -99,7 +119,7 @@ def _remove_hook(
             continue
         filtered_hooks = [
             h for h in hooks
-            if not (isinstance(h, dict) and script_path_str in str(h.get("command", "")))
+            if not (isinstance(h, dict) and script_name in str(h.get("command", "")))
         ]
         if filtered_hooks:
             group["hooks"] = filtered_hooks
