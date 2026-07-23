@@ -51,6 +51,63 @@ def install_agent_hooks(
     return HookInstallResult(hooks_path=hooks_path, script_path=script_path)
 
 
+def uninstall_agent_hooks(
+    target: AgentTarget,
+    project_path: Path,
+) -> bool:
+    """Uninstall project-local agent hooks for LLM Wiki recall."""
+    resolved_project_path = project_path.expanduser().resolve()
+    config_dir = resolved_project_path / target.hook_dir_name
+    hooks_path = config_dir / target.hook_config_name
+    script_path = config_dir / "hooks" / HOOK_SCRIPT_NAME
+
+    if script_path.exists():
+        script_path.unlink()
+
+    if hooks_path.exists():
+        hooks_data = _load_hooks_json(hooks_path)
+        _remove_hook(hooks_data, target, script_path)
+        hooks_path.write_text(
+            json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    return True
+
+
+def _remove_hook(
+    hooks_data: dict[str, JsonValue],
+    target: AgentTarget,
+    script_path: Path,
+) -> None:
+    hooks_value = hooks_data.get("hooks")
+    if not isinstance(hooks_value, dict):
+        return
+
+    event_value = hooks_value.get(target.hook_event)
+    if not isinstance(event_value, list):
+        return
+
+    script_path_str = str(script_path)
+    new_event_value = []
+    for group in event_value:
+        if not isinstance(group, dict):
+            new_event_value.append(group)
+            continue
+        hooks = group.get("hooks")
+        if not isinstance(hooks, list):
+            new_event_value.append(group)
+            continue
+        filtered_hooks = [
+            h for h in hooks
+            if not (isinstance(h, dict) and script_path_str in str(h.get("command", "")))
+        ]
+        if filtered_hooks:
+            group["hooks"] = filtered_hooks
+            new_event_value.append(group)
+
+    hooks_value[target.hook_event] = new_event_value
+
+
 def _load_hooks_json(hooks_path: Path) -> dict[str, JsonValue]:
     if not hooks_path.exists():
         return {"hooks": {}}
