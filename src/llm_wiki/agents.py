@@ -37,6 +37,16 @@ class AgentTarget:
         return f"llm-wiki {self.kind} install-hooks"
 
     @property
+    def startup_event(self) -> str:
+        """Event name the SessionStart awareness hook registers under."""
+        return "SessionStart"
+
+    @property
+    def guardrail_event(self) -> str:
+        """Event name the sensitive-file guardrail hook registers under."""
+        return "BeforeTool" if self.kind is AgentKind.GEMINI else "PreToolUse"
+
+    @property
     def hook_config_rel(self) -> str:
         """Hook configuration file path relative to the project root."""
         return f"{self.hook_dir_name}/{self.hook_config_name}"

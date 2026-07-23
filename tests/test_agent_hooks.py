@@ -6,8 +6,10 @@ import sys
 import uuid
 from pathlib import Path
 
+import pytest
+
 from llm_wiki.agent_hooks import install_agent_hooks
-from llm_wiki.agents import CODEX_TARGET
+from llm_wiki.agents import ALL_TARGETS, CLAUDE_TARGET, CODEX_TARGET, AgentTarget
 
 
 def test_hook_script_truncates_at_paragraph_boundary(tmp_path: Path) -> None:
@@ -188,3 +190,102 @@ def test_hook_script_filters_short_prompts_and_low_relevance_context(tmp_path: P
     )
     assert proc_low_rel.returncode == 0
     assert proc_low_rel.stdout.strip() == ""
+
+
+def _make_project(tmp_path: Path, *, with_db: bool = False) -> Path:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    wiki_dir = project_dir / ".llm-wiki"
+    wiki_dir.mkdir()
+    (wiki_dir / "config.toml").write_text("", encoding="utf-8")
+    if with_db:
+        (wiki_dir / "wiki.db").write_text("", encoding="utf-8")
+    return project_dir
+
+
+def _run_script(script_path: Path, *, stdin: str = "", cwd: Path | None = None) -> dict:
+    proc = subprocess.run(
+        [sys.executable, str(script_path)],
+        input=stdin,
+        text=True,
+        capture_output=True,
+        cwd=str(cwd) if cwd else None,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def test_startup_hook_emits_session_start_event(tmp_path: Path) -> None:
+    project_dir = _make_project(tmp_path, with_db=True)
+    install_agent_hooks(CLAUDE_TARGET, project_dir, force=True)
+    script_path = project_dir / ".claude" / "hooks" / "llm_wiki_startup.py"
+
+    data = _run_script(script_path, cwd=project_dir)
+    output = data["hookSpecificOutput"]
+
+    assert output["hookEventName"] == "SessionStart"
+    assert output["hookEventName"] != "UserPromptSubmit"
+
+    settings = json.loads(
+        (project_dir / ".claude" / "settings.json").read_text(encoding="utf-8")
+    )
+    assert "SessionStart" in settings["hooks"]
+
+
+def test_guardrail_hook_emits_pre_tool_use_event(tmp_path: Path) -> None:
+    project_dir = _make_project(tmp_path)
+    install_agent_hooks(CLAUDE_TARGET, project_dir, force=True)
+    script_path = project_dir / ".claude" / "hooks" / "llm_wiki_guardrail.py"
+
+    event = {"tool_input": {"file_path": "/repo/.env"}}
+    data = _run_script(script_path, stdin=json.dumps(event))
+    output = data["hookSpecificOutput"]
+
+    assert output["hookEventName"] == "PreToolUse"
+    assert output["hookEventName"] != "UserPromptSubmit"
+    assert ".env" in output["additionalContext"]
+
+    settings = json.loads(
+        (project_dir / ".claude" / "settings.json").read_text(encoding="utf-8")
+    )
+    assert "PreToolUse" in settings["hooks"]
+
+
+@pytest.mark.parametrize("target", ALL_TARGETS, ids=lambda t: t.kind.value)
+def test_smart_hook_output_event_matches_registered_event(
+    tmp_path: Path, target: AgentTarget
+) -> None:
+    # Invariant: for every target that embeds hookEventName, each smart hook's
+    # emitted event name must equal the event key it is registered under.
+    if not target.hook_output_includes_event:
+        pytest.skip("target does not embed hookEventName in output")
+
+    project_dir = tmp_path / target.kind.value
+    project_dir.mkdir()
+    wiki_dir = project_dir / ".llm-wiki"
+    wiki_dir.mkdir()
+    (wiki_dir / "config.toml").write_text("", encoding="utf-8")
+    (wiki_dir / "wiki.db").write_text("", encoding="utf-8")
+
+    install_agent_hooks(target, project_dir, force=True)
+    hooks_dir = project_dir / target.hook_dir_name / "hooks"
+    settings = json.loads(
+        (project_dir / target.hook_dir_name / target.hook_config_name).read_text(
+            encoding="utf-8"
+        )
+    )
+
+    cases = [
+        ("llm_wiki_startup.py", target.startup_event, "", project_dir),
+        (
+            "llm_wiki_guardrail.py",
+            target.guardrail_event,
+            json.dumps({"tool_input": {"file_path": "/repo/.env"}}),
+            None,
+        ),
+    ]
+    for script_name, event_name, stdin, cwd in cases:
+        data = _run_script(hooks_dir / script_name, stdin=stdin, cwd=cwd)
+        assert data["hookSpecificOutput"]["hookEventName"] == event_name
+        assert event_name in settings["hooks"]
