@@ -17,9 +17,9 @@ def test_hook_script_truncates_at_paragraph_boundary(tmp_path: Path) -> None:
     (project_dir / ".llm-wiki" / "config.toml").write_text("", encoding="utf-8")
 
     result = install_agent_hooks(
-        CODEX_TARGET, project_dir, tool_path=tmp_path / "tool", force=True
+        CODEX_TARGET, project_dir, tool_path=tmp_path / "tool", force=True, include_prompt_auto_inject=True
     )
-    script_path = result.script_path
+    script_path = project_dir / ".codex" / "hooks" / "llm_wiki_user_prompt.py"
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -67,9 +67,9 @@ def test_hook_script_deduplication(tmp_path: Path) -> None:
     (project_dir / ".llm-wiki" / "config.toml").write_text("", encoding="utf-8")
 
     result = install_agent_hooks(
-        CODEX_TARGET, project_dir, tool_path=tmp_path / "tool", force=True
+        CODEX_TARGET, project_dir, tool_path=tmp_path / "tool", force=True, include_prompt_auto_inject=True
     )
-    script_path = result.script_path
+    script_path = project_dir / ".codex" / "hooks" / "llm_wiki_user_prompt.py"
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -141,9 +141,9 @@ def test_hook_script_filters_short_prompts_and_low_relevance_context(tmp_path: P
     (project_dir / ".llm-wiki" / "config.toml").write_text("", encoding="utf-8")
 
     result = install_agent_hooks(
-        CODEX_TARGET, project_dir, tool_path=tmp_path / "tool", force=True
+        CODEX_TARGET, project_dir, tool_path=tmp_path / "tool", force=True, include_prompt_auto_inject=True
     )
-    script_path = result.script_path
+    script_path = project_dir / ".codex" / "hooks" / "llm_wiki_user_prompt.py"
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

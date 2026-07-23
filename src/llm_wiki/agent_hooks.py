@@ -23,32 +23,40 @@ class HookInstallResult:
 def install_agent_hooks(
     target: AgentTarget,
     project_path: Path,
-    tool_path: Path | None,
-    force: bool,
+    tool_path: Path | None = None,
+    force: bool = True,
+    include_prompt_auto_inject: bool = False,
 ) -> HookInstallResult:
-    """Install project-local agent hooks for LLM Wiki recall."""
+    """Install the complete, optimized LLM Wiki agent hook suite."""
     resolved_project_path = project_path.expanduser().resolve()
     resolved_tool_path = TOOL_REPO_PATH if tool_path is None else tool_path
+
+    # Install the 3 smart hooks
+    startup_res = install_startup_hook(target, resolved_project_path, force=force)
+    _ = install_stop_hook(target, resolved_project_path, force=force)
+    _ = install_guardrail_hook(target, resolved_project_path, force=force)
+
     config_dir = resolved_project_path / target.hook_dir_name
     hooks_dir = config_dir / "hooks"
     hooks_path = config_dir / target.hook_config_name
     script_path = hooks_dir / HOOK_SCRIPT_NAME
 
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-    if force or not script_path.exists():
-        _ = script_path.write_text(
-            _hook_script(target, resolved_tool_path.resolve()),
+    if include_prompt_auto_inject:
+        if force or not script_path.exists():
+            _ = script_path.write_text(
+                _hook_script(target, resolved_tool_path.resolve()),
+                encoding="utf-8",
+            )
+            script_path.chmod(0o755)
+
+        hooks_data = _load_hooks_json(hooks_path)
+        _merge_hook(hooks_data, target, script_path)
+        hooks_path.write_text(
+            json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
-        script_path.chmod(0o755)
 
-    hooks_data = _load_hooks_json(hooks_path)
-    _merge_hook(hooks_data, target, script_path)
-    _ = hooks_path.write_text(
-        json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    return HookInstallResult(hooks_path=hooks_path, script_path=script_path)
+    return HookInstallResult(hooks_path=hooks_path, script_path=startup_res.script_path)
 
 
 def install_startup_hook(
