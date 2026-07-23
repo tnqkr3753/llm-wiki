@@ -719,3 +719,17 @@ def test_invalid_project_config_fails_without_global_fallback(
     assert search_result.exit_code != 0
     assert "Invalid LLM Wiki config" in search_result.output
     assert "Global Wiki" not in search_result.output
+
+
+def test_project_skill_install_and_uninstall(tmp_path: Path) -> None:
+    project_path = tmp_path / "project"
+    project_path.mkdir()
+
+    install_res = runner.invoke(app, ["codex", "install-skill", "-p", str(project_path)])
+    skill_file = project_path / ".codex" / "skills" / "llm-wiki-recall" / "SKILL.md"
+    assert install_res.exit_code == 0
+    assert skill_file.is_file()
+
+    uninstall_res = runner.invoke(app, ["codex", "uninstall-skill", "-p", str(project_path)])
+    assert uninstall_res.exit_code == 0
+    assert not skill_file.is_file()

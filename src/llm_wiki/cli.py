@@ -13,7 +13,11 @@ from llm_wiki.agent_hooks import (
     install_stop_hook,
     uninstall_agent_hooks,
 )
-from llm_wiki.agent_skills import SkillLanguage, install_agent_skills
+from llm_wiki.agent_skills import (
+    SkillLanguage,
+    install_agent_skills,
+    uninstall_agent_skills,
+)
 from llm_wiki.agents import CLAUDE_TARGET, CODEX_TARGET, GEMINI_TARGET, AgentTarget
 from llm_wiki.config import resolve_db_path
 from llm_wiki.errors import WikiError
@@ -148,14 +152,18 @@ def _print_init_result(result: InitResult) -> None:
 
 def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> None:
     def install_skill_command(
+        path: ProjectPathOption = None,
         skills_dir: SkillsDirOption = None,
         tool_path: ToolPathOption = None,
         language: LanguageOption = SkillLanguage.AUTO,
         force: SkillForceOption = False,
+        is_global: Annotated[bool, typer.Option("-g", "--global", help="Install global agent skills into home directory.")] = False,
     ) -> None:
+        project_path = None if (is_global or path is None) else path
         results = install_agent_skills(
             target=target,
             skills_dir=skills_dir,
+            project_path=project_path,
             tool_path=tool_path,
             force=force,
             language=language,
@@ -163,12 +171,30 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
         for result in results:
             if result.installed:
                 console.print(
-                    f"installed {target.display_name} skill: {result.skill_path}",
+                    f"[green]✓[/green] installed {target.display_name} skill: {result.skill_path}",
                 )
             else:
                 console.print(
                     f"{target.display_name} skill already exists: {result.skill_path}",
                 )
+
+    def uninstall_skill_command(
+        path: ProjectPathOption = None,
+        skills_dir: SkillsDirOption = None,
+        is_global: Annotated[bool, typer.Option("-g", "--global", help="Uninstall global agent skills from home directory.")] = False,
+    ) -> None:
+        project_path = None if (is_global or path is None) else path
+        removed = uninstall_agent_skills(
+            target=target,
+            skills_dir=skills_dir,
+            project_path=project_path,
+            is_global=is_global,
+        )
+        if removed:
+            for item in removed:
+                console.print(f"[green]✓[/green] uninstalled {target.display_name} skill: {item}")
+        else:
+            console.print(f"No {target.display_name} skills found to uninstall.")
 
     def install_hooks_command(
         path: ProjectPathOption = None,
@@ -221,8 +247,12 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
 
     _ = agent_app.command(
         "install-skill",
-        help=f"Install the LLM Wiki {target.display_name} skills.",
+        help=f"Install the LLM Wiki {target.display_name} skills (globally or for a project).",
     )(install_skill_command)
+    _ = agent_app.command(
+        "uninstall-skill",
+        help=f"Uninstall the LLM Wiki {target.display_name} skills (globally or from a project).",
+    )(uninstall_skill_command)
     _ = agent_app.command(
         "install-hooks",
         help=f"Install project-local {target.display_name} hooks for LLM Wiki.",
