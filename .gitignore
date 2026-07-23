@@ -20,3 +20,6 @@ venv/
 
 # Local agent/workflow state
 .omo/
+
+# Local dogfooding of this tool's own Claude Code hooks/skills
+.claude/
