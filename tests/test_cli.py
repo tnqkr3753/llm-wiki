@@ -424,6 +424,7 @@ def test_codex_install_hooks_writes_user_prompt_hook(tmp_path: Path) -> None:
             str(project_path),
             "--tool-path",
             str(tool_path),
+            "--auto-prompt",
         ],
     )
 
@@ -433,7 +434,7 @@ def test_codex_install_hooks_writes_user_prompt_hook(tmp_path: Path) -> None:
     script_text = script_path.read_text(encoding="utf-8")
     hook_command = hooks_data["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
     assert install_result.exit_code == 0
-    assert "installed Codex hooks" in install_result.output
+    assert "installed complete smart hook suite for Codex" in install_result.output
     assert script_path.is_file()
     assert "llm-wiki ask-context" in script_text
     assert "hookSpecificOutput" in script_text
@@ -475,7 +476,7 @@ def test_codex_install_hooks_preserves_existing_hooks_json(tmp_path: Path) -> No
     hooks_data = json.loads(hooks_path.read_text(encoding="utf-8"))
     assert install_result.exit_code == 0
     assert "SessionStart" in hooks_data["hooks"]
-    assert "UserPromptSubmit" in hooks_data["hooks"]
+    assert "Stop" in hooks_data["hooks"]
     assert hooks_data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == (
         "python3 existing.py"
     )
@@ -569,6 +570,7 @@ def test_claude_install_hooks_writes_user_prompt_hook(tmp_path: Path) -> None:
             str(project_path),
             "--tool-path",
             str(tool_path),
+            "--auto-prompt",
         ],
     )
 
@@ -578,7 +580,7 @@ def test_claude_install_hooks_writes_user_prompt_hook(tmp_path: Path) -> None:
     script_text = script_path.read_text(encoding="utf-8")
     hook_entry = settings_data["hooks"]["UserPromptSubmit"][0]["hooks"][0]
     assert install_result.exit_code == 0
-    assert "installed Claude Code hooks" in install_result.output
+    assert "installed complete smart hook suite for Claude Code" in install_result.output
     assert script_path.is_file()
     assert str(script_path) in hook_entry["command"]
     assert hook_entry["timeout"] == 5
@@ -615,11 +617,11 @@ def test_claude_install_hooks_preserves_existing_settings(tmp_path: Path) -> Non
     )
 
     first_result = runner.invoke(
-        app, ["claude", "install-hooks", "-p", str(project_path)]
+        app, ["claude", "install-hooks", "-p", str(project_path), "--auto-prompt"]
     )
     second_result = runner.invoke(
         app,
-        ["claude", "install-hooks", "-p", str(project_path)],
+        ["claude", "install-hooks", "-p", str(project_path), "--auto-prompt"],
     )
 
     settings_data = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -647,6 +649,7 @@ def test_gemini_install_hooks_writes_before_agent_hook(tmp_path: Path) -> None:
             str(project_path),
             "--tool-path",
             str(tool_path),
+            "--auto-prompt",
         ],
     )
 
@@ -656,7 +659,7 @@ def test_gemini_install_hooks_writes_before_agent_hook(tmp_path: Path) -> None:
     script_text = script_path.read_text(encoding="utf-8")
     hook_entry = settings_data["hooks"]["BeforeAgent"][0]["hooks"][0]
     assert install_result.exit_code == 0
-    assert "installed Gemini CLI hooks" in install_result.output
+    assert "installed complete smart hook suite for Gemini CLI" in install_result.output
     assert str(script_path) in hook_entry["command"]
     assert hook_entry["timeout"] == 5000
     assert hook_entry["name"] == "llm-wiki-context"

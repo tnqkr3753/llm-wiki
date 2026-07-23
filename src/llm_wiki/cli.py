@@ -174,6 +174,7 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
         path: ProjectPathOption = None,
         tool_path: ToolPathOption = None,
         force: HookForceOption = False,
+        auto_prompt: Annotated[bool, typer.Option("--auto-prompt", help="Also auto-inject wiki context on every user prompt (higher token usage).")] = False,
     ) -> None:
         project_path = Path.cwd() if path is None else path
         result = install_agent_hooks(
@@ -181,9 +182,12 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
             project_path=project_path,
             tool_path=tool_path,
             force=force,
+            include_prompt_auto_inject=auto_prompt,
         )
-        console.print(f"installed {target.display_name} hooks: {result.hooks_path}")
-        console.print(f"script: {result.script_path}")
+        console.print(f"[green]✓[/green] installed complete smart hook suite for {target.display_name}: {result.hooks_path}")
+        console.print("  - SessionStart awareness hook (~15 tokens once at startup)")
+        console.print("  - Stop / SessionEnd completion advisor hook")
+        console.print("  - PreToolUse guardrail hook for sensitive file edits")
 
     def uninstall_hooks_command(
         path: ProjectPathOption = None,
