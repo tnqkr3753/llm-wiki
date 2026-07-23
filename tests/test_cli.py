@@ -476,7 +476,7 @@ def test_codex_install_hooks_preserves_existing_hooks_json(tmp_path: Path) -> No
     hooks_data = json.loads(hooks_path.read_text(encoding="utf-8"))
     assert install_result.exit_code == 0
     assert "SessionStart" in hooks_data["hooks"]
-    assert "Stop" in hooks_data["hooks"]
+    assert "PreToolUse" in hooks_data["hooks"]
     assert hooks_data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == (
         "python3 existing.py"
     )
