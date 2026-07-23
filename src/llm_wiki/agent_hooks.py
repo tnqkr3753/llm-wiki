@@ -42,9 +42,8 @@ def install_agent_hooks(
     resolved_project_path = project_path.expanduser().resolve()
     resolved_tool_path = TOOL_REPO_PATH if tool_path is None else tool_path
 
-    # Install the smart hooks
+    # Install the smart hooks (SessionStart awareness + PreToolUse guardrail)
     startup_res = install_startup_hook(target, resolved_project_path, force=force)
-    _ = install_stop_hook(target, resolved_project_path, force=force)
     _ = install_guardrail_hook(target, resolved_project_path, force=force)
 
     config_dir = resolved_project_path / target.hook_dir_name
@@ -183,14 +182,15 @@ def uninstall_agent_hooks(
         config_dir = resolved_project_path / target.hook_dir_name
 
     hooks_path = config_dir / target.hook_config_name
-    script_path = config_dir / "hooks" / HOOK_SCRIPT_NAME
-
-    if script_path.exists():
-        script_path.unlink()
+    hooks_dir = config_dir / "hooks"
+    for s_name in (HOOK_SCRIPT_NAME, "llm_wiki_startup.py", "llm_wiki_stop.py", "llm_wiki_guardrail.py"):
+        sp = hooks_dir / s_name
+        if sp.exists():
+            sp.unlink()
 
     if hooks_path.exists():
         hooks_data = _load_hooks_json(hooks_path)
-        _remove_hook(hooks_data, target, script_path)
+        _remove_hook(hooks_data, target, config_dir)
         hooks_path.write_text(
             json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
@@ -200,12 +200,14 @@ def uninstall_agent_hooks(
     global_config_dir = Path(f"~/{target.hook_dir_name}").expanduser().resolve()
     if global_config_dir != config_dir:
         global_hooks_path = global_config_dir / target.hook_config_name
-        global_script_path = global_config_dir / "hooks" / HOOK_SCRIPT_NAME
-        if global_script_path.exists():
-            global_script_path.unlink()
+        global_hooks_dir = global_config_dir / "hooks"
+        for s_name in (HOOK_SCRIPT_NAME, "llm_wiki_startup.py", "llm_wiki_stop.py", "llm_wiki_guardrail.py"):
+            sp = global_hooks_dir / s_name
+            if sp.exists():
+                sp.unlink()
         if global_hooks_path.exists():
             global_data = _load_hooks_json(global_hooks_path)
-            _remove_hook(global_data, target, global_script_path)
+            _remove_hook(global_data, target, global_config_dir)
             global_hooks_path.write_text(
                 json.dumps(global_data, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
