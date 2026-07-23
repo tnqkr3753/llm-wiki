@@ -15,6 +15,7 @@ from llm_wiki.hook_templates import (
     guardrail_script,
     prompt_hook_script,
     startup_script,
+    stop_script,
 )
 
 type JsonValue = (
@@ -43,6 +44,7 @@ def install_agent_hooks(
 
     # Install the smart hooks
     startup_res = install_startup_hook(target, resolved_project_path, force=force)
+    _ = install_stop_hook(target, resolved_project_path, force=force)
     _ = install_guardrail_hook(target, resolved_project_path, force=force)
 
     config_dir = resolved_project_path / target.hook_dir_name
@@ -80,6 +82,22 @@ def install_startup_hook(
         script_name="llm_wiki_startup.py",
         script_source=startup_script(target),
         event_name=target.startup_event,
+        force=force,
+    )
+
+
+def install_stop_hook(
+    target: AgentTarget,
+    project_path: Path,
+    force: bool = True,
+) -> HookInstallResult:
+    """Install a SessionEnd / Stop advisor hook to remind about LLM Wiki promotion."""
+    return _install_smart_hook(
+        target,
+        project_path,
+        script_name="llm_wiki_stop.py",
+        script_source=stop_script(target),
+        event_name=target.stop_event,
         force=force,
     )
 

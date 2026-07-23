@@ -42,6 +42,11 @@ class AgentTarget:
         return "SessionStart"
 
     @property
+    def stop_event(self) -> str:
+        """Event name the SessionEnd / Stop completion advisor hook registers under."""
+        return "SessionEnd" if self.kind is AgentKind.GEMINI else "Stop"
+
+    @property
     def guardrail_event(self) -> str:
         """Event name the sensitive-file guardrail hook registers under."""
         return "BeforeTool" if self.kind is AgentKind.GEMINI else "PreToolUse"

@@ -14,6 +14,7 @@ from llm_wiki.agents import AgentTarget
 __all__ = [
     "context_output_source",
     "startup_script",
+    "stop_script",
     "guardrail_script",
     "prompt_hook_script",
 ]
@@ -52,6 +53,25 @@ def main():
         return
 
     context_text = "[LLM Wiki] Project wiki active (.llm-wiki/wiki.db). Use skill 'llm-wiki-recall' for project rules or runbooks."
+    print(json.dumps(
+        {{"hookSpecificOutput": {hook_output_source}}},
+        ensure_ascii=False,
+    ))
+
+if __name__ == "__main__":
+    main()
+"""
+
+
+def stop_script(target: AgentTarget) -> str:
+    """Stop / SessionEnd completion advisor hook: reminds to promote new wiki knowledge."""
+    hook_output_source = context_output_source(target, target.stop_event)
+    return f"""#!/usr/bin/env python3
+import json
+import sys
+
+def main():
+    context_text = "[LLM Wiki Advisor] Task complete. If a new architectural decision, runbook, or convention was established, consider promoting it to LLM Wiki using skill 'llm-wiki-promote'."
     print(json.dumps(
         {{"hookSpecificOutput": {hook_output_source}}},
         ensure_ascii=False,
