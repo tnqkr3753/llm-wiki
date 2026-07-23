@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from llm_wiki.agent_hooks import install_agent_hooks
+from llm_wiki.agent_hooks import install_agent_hooks, uninstall_agent_hooks
 from llm_wiki.agent_skills import SkillLanguage, install_agent_skills
 from llm_wiki.agents import CLAUDE_TARGET, CODEX_TARGET, GEMINI_TARGET, AgentTarget
 from llm_wiki.config import resolve_db_path
@@ -179,6 +179,13 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
         console.print(f"installed {target.display_name} hooks: {result.hooks_path}")
         console.print(f"script: {result.script_path}")
 
+    def uninstall_hooks_command(
+        path: ProjectPathOption = None,
+    ) -> None:
+        project_path = Path.cwd() if path is None else path
+        uninstall_agent_hooks(target=target, project_path=project_path)
+        console.print(f"[green]✓[/green] uninstalled {target.display_name} hooks from {project_path}")
+
     _ = agent_app.command(
         "install-skill",
         help=f"Install the LLM Wiki {target.display_name} skills.",
@@ -187,6 +194,10 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
         "install-hooks",
         help=f"Install project-local {target.display_name} hooks for LLM Wiki.",
     )(install_hooks_command)
+    _ = agent_app.command(
+        "uninstall-hooks",
+        help=f"Uninstall project-local {target.display_name} hooks for LLM Wiki.",
+    )(uninstall_hooks_command)
 
 
 _register_install_commands(codex_app, CODEX_TARGET)
