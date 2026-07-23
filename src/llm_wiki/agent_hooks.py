@@ -200,6 +200,73 @@ def _merge_guardrail_entry(
     event_value.append({"hooks": [{"type": "command", "command": command, "timeout": 3}]})
 
 
+def install_stop_hook(
+    target: AgentTarget,
+    project_path: Path,
+    force: bool = True,
+) -> HookInstallResult:
+    """Install a SessionEnd / Stop advisor hook to remind about LLM Wiki promotion."""
+    resolved_project_path = project_path.expanduser().resolve()
+    config_dir = resolved_project_path / target.hook_dir_name
+    hooks_dir = config_dir / "hooks"
+    hooks_path = config_dir / target.hook_config_name
+    script_name = "llm_wiki_stop.py"
+    script_path = hooks_dir / script_name
+
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    if force or not script_path.exists():
+        script_path.write_text(_stop_script(target), encoding="utf-8")
+        script_path.chmod(0o755)
+
+    hooks_data = _load_hooks_json(hooks_path)
+    _merge_stop_entry(hooks_data, target, script_path)
+    hooks_path.write_text(
+        json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return HookInstallResult(hooks_path=hooks_path, script_path=script_path)
+
+
+def _stop_script(target: AgentTarget) -> str:
+    hook_output_source = _hook_output_source(target)
+    return f"""#!/usr/bin/env python3
+import json
+import sys
+
+def main():
+    context_text = "[LLM Wiki Advisor] Task complete. If a new architectural decision, runbook, or convention was established, consider promoting it to LLM Wiki using skill 'llm-wiki-promote'."
+    print(json.dumps(
+        {{"hookSpecificOutput": {hook_output_source}}},
+        ensure_ascii=False,
+    ))
+
+if __name__ == "__main__":
+    main()
+"""
+
+
+def _merge_stop_entry(
+    hooks_data: dict[str, JsonValue],
+    target: AgentTarget,
+    script_path: Path,
+) -> None:
+    hooks_value = hooks_data.get("hooks")
+    if not isinstance(hooks_value, dict):
+        hooks_value = {}
+        hooks_data["hooks"] = hooks_value
+
+    event_name = "Stop" if target.kind != AgentKind.GEMINI else "SessionEnd"
+    event_value = hooks_value.get(event_name)
+    if not isinstance(event_value, list):
+        event_value = []
+        hooks_value[event_name] = event_value
+
+    command = f"python3 {shlex.quote(str(script_path))}"
+    if _has_llm_wiki_hook(event_value, command):
+        return
+    event_value.append({"hooks": [{"type": "command", "command": command, "timeout": 3}]})
+
+
 def uninstall_agent_hooks(
     target: AgentTarget,
     project_path: Path | None = None,

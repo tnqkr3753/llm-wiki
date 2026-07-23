@@ -10,6 +10,7 @@ from llm_wiki.agent_hooks import (
     install_agent_hooks,
     install_guardrail_hook,
     install_startup_hook,
+    install_stop_hook,
     uninstall_agent_hooks,
 )
 from llm_wiki.agent_skills import SkillLanguage, install_agent_skills
@@ -207,6 +208,13 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
         result = install_guardrail_hook(target=target, project_path=project_path)
         console.print(f"[green]✓[/green] installed selective PreToolUse guardrail hook for {target.display_name}: {result.hooks_path}")
 
+    def install_stop_hook_command(
+        path: ProjectPathOption = None,
+    ) -> None:
+        project_path = Path.cwd() if path is None else path
+        result = install_stop_hook(target=target, project_path=project_path)
+        console.print(f"[green]✓[/green] installed Stop / SessionEnd advisor hook for {target.display_name}: {result.hooks_path}")
+
     _ = agent_app.command(
         "install-skill",
         help=f"Install the LLM Wiki {target.display_name} skills.",
@@ -223,6 +231,10 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
         "install-guardrail-hook",
         help=f"Install selective PreToolUse guardrail hook for sensitive file edits.",
     )(install_guardrail_hook_command)
+    _ = agent_app.command(
+        "install-stop-hook",
+        help=f"Install Stop / SessionEnd advisor hook to remind about wiki promotion.",
+    )(install_stop_hook_command)
     _ = agent_app.command(
         "uninstall-hooks",
         help=f"Uninstall {target.display_name} hooks for LLM Wiki.",
