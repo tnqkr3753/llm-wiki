@@ -120,6 +120,81 @@ def _merge_startup_entry(
         hooks_value[event_name] = event_value
 
     command = f"python3 {shlex.quote(str(script_path))}"
+    event_value.append({"hooks": [{"type": "command", "command": command, "timeout": 3}]})
+
+
+def install_guardrail_hook(
+    target: AgentTarget,
+    project_path: Path,
+    force: bool = True,
+) -> HookInstallResult:
+    """Install a selective PreToolUse guardrail hook for sensitive file modifications."""
+    resolved_project_path = project_path.expanduser().resolve()
+    config_dir = resolved_project_path / target.hook_dir_name
+    hooks_dir = config_dir / "hooks"
+    hooks_path = config_dir / target.hook_config_name
+    script_name = "llm_wiki_guardrail.py"
+    script_path = hooks_dir / script_name
+
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    if force or not script_path.exists():
+        script_path.write_text(_guardrail_script(target), encoding="utf-8")
+        script_path.chmod(0o755)
+
+    hooks_data = _load_hooks_json(hooks_path)
+    _merge_guardrail_entry(hooks_data, target, script_path)
+    hooks_path.write_text(
+        json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return HookInstallResult(hooks_path=hooks_path, script_path=script_path)
+
+
+def _guardrail_script(target: AgentTarget) -> str:
+    hook_output_source = _hook_output_source(target)
+    return f"""#!/usr/bin/env python3
+import json
+import sys
+
+def main():
+    try:
+        event = json.load(sys.stdin)
+    except Exception:
+        return
+
+    tool_input = event.get("input") or event.get("tool_input") or {{}}
+    file_path = str(tool_input.get("file_path") or tool_input.get("path") or "")
+
+    sensitive = ("schema.sql", "AGENTS.md", "config.toml", "settings.json", "Dockerfile", ".env")
+    if any(s in file_path for s in sensitive):
+        context_text = "[LLM Wiki Guardrail] Modifying sensitive file: " + file_path + ". Verify rules in LLM Wiki before committing changes."
+        print(json.dumps(
+            {{"hookSpecificOutput": {hook_output_source}}},
+            ensure_ascii=False,
+        ))
+
+if __name__ == "__main__":
+    main()
+"""
+
+
+def _merge_guardrail_entry(
+    hooks_data: dict[str, JsonValue],
+    target: AgentTarget,
+    script_path: Path,
+) -> None:
+    hooks_value = hooks_data.get("hooks")
+    if not isinstance(hooks_value, dict):
+        hooks_value = {}
+        hooks_data["hooks"] = hooks_value
+
+    event_name = "PreToolUse" if target.kind != AgentKind.GEMINI else "BeforeTool"
+    event_value = hooks_value.get(event_name)
+    if not isinstance(event_value, list):
+        event_value = []
+        hooks_value[event_name] = event_value
+
+    command = f"python3 {shlex.quote(str(script_path))}"
     if _has_llm_wiki_hook(event_value, command):
         return
     event_value.append({"hooks": [{"type": "command", "command": command, "timeout": 3}]})

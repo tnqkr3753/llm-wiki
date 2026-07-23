@@ -8,6 +8,7 @@ from rich.console import Console
 
 from llm_wiki.agent_hooks import (
     install_agent_hooks,
+    install_guardrail_hook,
     install_startup_hook,
     uninstall_agent_hooks,
 )
@@ -199,6 +200,13 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
         result = install_startup_hook(target=target, project_path=project_path)
         console.print(f"[green]✓[/green] installed lightweight SessionStart awareness hook for {target.display_name}: {result.hooks_path}")
 
+    def install_guardrail_hook_command(
+        path: ProjectPathOption = None,
+    ) -> None:
+        project_path = Path.cwd() if path is None else path
+        result = install_guardrail_hook(target=target, project_path=project_path)
+        console.print(f"[green]✓[/green] installed selective PreToolUse guardrail hook for {target.display_name}: {result.hooks_path}")
+
     _ = agent_app.command(
         "install-skill",
         help=f"Install the LLM Wiki {target.display_name} skills.",
@@ -211,6 +219,10 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
         "install-startup-hook",
         help=f"Install lightweight SessionStart awareness hook (~15 tokens once at startup).",
     )(install_startup_hook_command)
+    _ = agent_app.command(
+        "install-guardrail-hook",
+        help=f"Install selective PreToolUse guardrail hook for sensitive file edits.",
+    )(install_guardrail_hook_command)
     _ = agent_app.command(
         "uninstall-hooks",
         help=f"Uninstall {target.display_name} hooks for LLM Wiki.",
