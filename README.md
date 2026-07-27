@@ -149,6 +149,38 @@ Documents with a count of zero were never used to ground an answer — they are
 promotion candidates that did not pay off, and the first thing to review when
 the wiki grows noisy.
 
+## Embedding (configuration only)
+
+Retrieval is BM25 over a trigram FTS5 index. There is **no embedding backend
+yet**, but the configuration surface is settled, so a local model can be wired
+in later without changing these keys:
+
+| Setting | Environment | Config `[embedding]` |
+|---|---|---|
+| model (required) | `LLM_WIKI_EMBED_MODEL` | `model` |
+| endpoint | `LLM_WIKI_EMBED_URL` | `endpoint` |
+| dimension | `LLM_WIKI_EMBED_DIM` | `dimension` |
+| allow remote | `LLM_WIKI_EMBED_ALLOW_REMOTE` | `allow_remote` |
+
+Fields resolve independently: environment first, then the nearest project
+config, then the global config. Setting them changes nothing about search
+today — only what `llm-wiki doctor` reports:
+
+```bash
+llm-wiki doctor
+# - Embedding: Not configured (BM25 only)
+# ✓ Embedding: bge-m3 via http://127.0.0.1:11434, dim 1024 - no backend installed yet
+```
+
+**Endpoints outside this machine are refused by default.** A wiki holds
+internal decisions and runbooks, so a non-loopback host requires
+`LLM_WIKI_EMBED_ALLOW_REMOTE=1`; otherwise `doctor` reports it as blocked.
+
+See [docs/decisions/embedding-config-surface.md](docs/decisions/embedding-config-surface.md)
+for the sizing measurements and why chunking has to come first.
+
+## Database path resolution
+
 Database path resolution is explicit and predictable:
 
 ```text

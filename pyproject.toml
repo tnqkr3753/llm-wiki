@@ -50,6 +50,8 @@ reportUnknownParameterType = "none"
 reportUnknownArgumentType = "none"
 reportUnknownMemberType = "none"
 reportMissingTypeArgument = "none"
+# pytest fixtures are referenced by name, never called directly.
+reportUnusedFunction = "none"
 
 [tool.ruff]
 target-version = "py313"
