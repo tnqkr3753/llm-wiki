@@ -1,9 +1,15 @@
 ---
 title: Hook event-name invariant and no looping Stop hooks
-tags: llm-wiki, project, hooks, decisions
+tags:
+  - llm-wiki
+  - project
+  - hooks
+  - decisions
 ---
 
 # Hook event-name invariant
+
+Back to the [[index]]. Related: the [[manual]] hook-installation sections.
 
 Every generated hook script's `hookEventName` in its stdout JSON
 (`hookSpecificOutput.hookEventName`) **must match the event the hook is

@@ -151,23 +151,42 @@ repeatable troubleshooting findings.
 
 ## Workflow
 
-1. Choose the destination.
-   - Project-specific knowledge: `/path/to/project/docs/decisions/`,
-     `/path/to/project/docs/runbooks/`, or `/path/to/project/docs/references/`.
-   - Global/common knowledge: `~/.llm-wiki/docs/decisions/`,
-     `~/.llm-wiki/docs/runbooks/`, or `~/.llm-wiki/docs/references/`.
-   - If `LLM_WIKI_HOME` is set, use `$LLM_WIKI_HOME/docs/` instead of
-     `~/.llm-wiki/docs/`.
-2. Write or update a Markdown document with frontmatter:
+1. Decide the scope: is this knowledge **global** or **project-specific**?
+   Ask which fits before writing. Default to project scope when unsure — it is
+   cheaper to promote a project note to global later than to retract a wrong
+   global claim from every project.
+   - **Global/common** — true for any project, any repo: language/tooling
+     conventions, cross-project runbooks, org-wide decisions, stable external
+     references. Destination: `~/.llm-wiki/docs/decisions/`, `.../runbooks/`,
+     or `.../references/` (or `$LLM_WIKI_HOME/docs/` when `LLM_WIKI_HOME` is
+     set). Index with **no** `--db` so global config resolution picks
+     `~/.llm-wiki/wiki.db`.
+   - **Project-specific** — only true inside this repo: its architecture,
+     its decisions, its deploy steps, code-tied conventions. Destination:
+     `/path/to/project/docs/decisions/`, `.../runbooks/`, or `.../references/`.
+     Index with an explicit `--db /path/to/project/.llm-wiki/wiki.db`.
+   - Litmus test: "Would another unrelated project want this verbatim?"
+     Yes → global. No → project.
+2. Write or update a Markdown document. Use frontmatter with **YAML list tags**
+   (Obsidian-compatible; the parser also accepts a legacy comma string):
 
 ```markdown
 ---
 title: Short Clear Title
-tags: llm-wiki, project
+tags:
+  - llm-wiki
+  - project
 ---
 ```
 
-3. Index it with the selected project DB:
+3. Connect it into the graph. Add at least one `[[wikilink]]` from the new
+   document back to that wiki's `[[index]]` (and to any closely related page),
+   and add a matching `[[your-new-doc]]` link from `index.md` so the page is not
+   an orphan. Wikilink targets are the path under `docs/` without the `.md`
+   suffix, e.g. `[[decisions/deploy-rollback]]`. This is what makes the Obsidian
+   graph view and `llm-wiki links <id>` show the relationship.
+
+4. Index it. Project scope — pass the explicit project DB:
 
 ```bash
 uv run --directory {{tool_path}} llm-wiki add \\
@@ -175,19 +194,24 @@ uv run --directory {{tool_path}} llm-wiki add \\
   --db /path/to/project/.llm-wiki/wiki.db
 ```
 
-4. For global/common knowledge, index through global config resolution:
+   Global scope — let global config resolution pick `~/.llm-wiki/wiki.db`:
 
 ```bash
 uv run --directory {{tool_path}} llm-wiki add \\
   ~/.llm-wiki/docs/references/example.md
 ```
 
-5. Verify recall with `llm-wiki ask-context`. For global/common knowledge,
+   Reindex both the new doc and `index.md` so the new edges are stored (or run
+   `llm-wiki reindex` over the docs root).
+
+5. Verify recall with `llm-wiki ask-context`, and confirm the graph with
+   `llm-wiki links <id>` (outgoing + backlinks). For global/common knowledge,
    omit `--db` unless `LLM_WIKI_DB` is intentionally set for a different DB.
 
 ## Final Response
 
-Report the promoted file path, DB path, and verified recall query.
+Report the chosen scope, the promoted file path, DB path, the linked
+`index.md` edge, and the verified recall query.
 """,
     ),
     SkillSpec(

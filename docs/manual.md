@@ -1,8 +1,19 @@
+---
+title: LLM Wiki Manual
+tags:
+  - manual
+  - llm-wiki
+  - runbook
+---
+
 # LLM Wiki Manual
 
 LLM Wiki is a local-first knowledge base for Codex and other LLM agents. It
 stores approved Markdown knowledge, indexes it into SQLite FTS5, and returns
 source-grounded context through the CLI.
+
+Start from the [[index]] for the page list, or read the [[example]] architecture
+guide. Hook design rules are in [[decisions/hook-event-name-invariant]].
 
 ## 1. Initialize The Global Wiki
 

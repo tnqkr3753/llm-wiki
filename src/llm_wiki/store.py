@@ -13,6 +13,7 @@ from llm_wiki.errors import DocumentNotFoundError, SqlColumnTypeError, WikiError
 from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import (
     DocumentId,
+    DocumentLink,
     DocumentUsage,
     ParsedDocument,
     ReindexFailure,
@@ -48,6 +49,14 @@ CREATE TABLE IF NOT EXISTS document_usage (
 );
 """
 
+SCHEMA_LINKS = """
+CREATE TABLE IF NOT EXISTS document_links (
+    source_id INTEGER NOT NULL,
+    target TEXT NOT NULL,
+    PRIMARY KEY (source_id, target)
+);
+"""
+
 SCHEMA_FTS_TRIGRAM = """
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
     title,
@@ -77,6 +86,7 @@ def initialize(db_path: Path) -> None:
     with closing(sqlite3.connect(db_path)) as connection:
         _ = connection.executescript(SCHEMA)
         _ = connection.executescript(SCHEMA_USAGE)
+        _ = connection.executescript(SCHEMA_LINKS)
 
         # Ensure documents_fts exists with trigram (or fallback unicode61)
         tables = _fetch_all(
@@ -150,8 +160,26 @@ def upsert_document(db_path: Path, document: ParsedDocument) -> DocumentId:
             """,
             (int(document_id), document.title, document.body, tags_text),
         )
+        _replace_links(connection, document_id, document.links)
         connection.commit()
         return document_id
+
+
+def _replace_links(
+    connection: sqlite3.Connection,
+    document_id: DocumentId,
+    links: tuple[str, ...],
+) -> None:
+    """Swap one document's outgoing wikilink targets for its current set."""
+    _ = connection.execute(
+        "DELETE FROM document_links WHERE source_id = ?",
+        (int(document_id),),
+    )
+    for target in links:
+        _ = connection.execute(
+            "INSERT OR IGNORE INTO document_links (source_id, target) VALUES (?, ?)",
+            (int(document_id), target),
+        )
 
 
 def search(
@@ -416,6 +444,93 @@ def _document_from_row(row: SqlRow) -> StoredDocument:
     )
 
 
+def outgoing_links(db_path: Path, document_id: DocumentId) -> tuple[DocumentLink, ...]:
+    """List indexed documents this document links to, in first-seen order."""
+    initialize(db_path)
+    with closing(sqlite3.connect(db_path)) as connection:
+        targets = [
+            _row_str(row, 0)
+            for row in _fetch_all(
+                connection,
+                "SELECT target FROM document_links WHERE source_id = ? ORDER BY rowid",
+                (int(document_id),),
+            )
+        ]
+        documents = _document_index(connection)
+
+    resolved: list[DocumentLink] = []
+    seen: set[int] = {int(document_id)}
+    for target in targets:
+        match = _resolve_target(target, documents)
+        if match is not None and int(match.id) not in seen:
+            seen.add(int(match.id))
+            resolved.append(match)
+    return tuple(resolved)
+
+
+def backlinks(db_path: Path, document_id: DocumentId) -> tuple[DocumentLink, ...]:
+    """List indexed documents that link to this document, in document order."""
+    initialize(db_path)
+    with closing(sqlite3.connect(db_path)) as connection:
+        documents = _document_index(connection)
+        edges = _fetch_all(
+            connection,
+            "SELECT source_id, target FROM document_links ORDER BY source_id, rowid",
+            (),
+        )
+
+    by_id = {int(link.id): link for link in documents}
+    incoming: list[DocumentLink] = []
+    seen: set[int] = set()
+    for edge in edges:
+        source_id = _row_int(edge, 0)
+        if source_id == int(document_id) or source_id in seen:
+            continue
+        match = _resolve_target(_row_str(edge, 1), documents)
+        if match is not None and int(match.id) == int(document_id):
+            source = by_id.get(source_id)
+            if source is not None:
+                seen.add(source_id)
+                incoming.append(source)
+    return tuple(incoming)
+
+
+def _document_index(connection: sqlite3.Connection) -> list[DocumentLink]:
+    rows = _fetch_all(connection, "SELECT id, path, title FROM documents", ())
+    return [
+        DocumentLink(
+            id=DocumentId(_row_int(row, 0)),
+            path=_row_str(row, 1),
+            title=_row_str(row, 2),
+        )
+        for row in rows
+    ]
+
+
+def _resolve_target(
+    target: str,
+    documents: list[DocumentLink],
+) -> DocumentLink | None:
+    """Resolve a wikilink target to a document by relative path or basename."""
+    wanted = _normalize_link_path(target)
+    if wanted == "":
+        return None
+    wanted_stem = wanted.rsplit("/", 1)[-1]
+    for document in documents:
+        doc_path = _normalize_link_path(document.path)
+        if doc_path == wanted or doc_path.endswith("/" + wanted):
+            return document
+    for document in documents:
+        if _normalize_link_path(document.path).rsplit("/", 1)[-1] == wanted_stem:
+            return document
+    return None
+
+
+def _normalize_link_path(value: str) -> str:
+    normalized = value.replace("\\", "/").strip().removesuffix(".md")
+    return normalized.removeprefix("./")
+
+
 def reindex_directory(db_path: Path, root_path: Path) -> ReindexResult:
     """Reindex every Markdown file under root_path and drop deleted ones."""
     root = root_path.expanduser().resolve()
@@ -489,6 +604,10 @@ def _remove_missing_documents(db_path: Path, root: Path) -> int:
             )
             _ = connection.execute(
                 "DELETE FROM document_usage WHERE document_id = ?",
+                (document_id,),
+            )
+            _ = connection.execute(
+                "DELETE FROM document_links WHERE source_id = ?",
                 (document_id,),
             )
         # Prune any usage row whose document is gone, however it was orphaned,
