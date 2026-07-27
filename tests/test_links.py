@@ -142,3 +142,12 @@ def test_upsert_document_without_links_keeps_empty_graph(tmp_path: Path) -> None
     document_id = upsert_document(db_path, document)
 
     assert outgoing_links(db_path, document_id) == ()
+
+
+def test_parse_wikilinks_ignores_links_in_inline_code() -> None:
+    assert parse_wikilinks("real [[a]] but example `[[b]]` stays out") == ("a",)
+
+
+def test_parse_wikilinks_ignores_links_in_fenced_code_blocks() -> None:
+    body = "before [[a]]\n```\nsyntax [[b]] here\n```\nafter [[c]]"
+    assert parse_wikilinks(body) == ("a", "c")

@@ -9,6 +9,8 @@ from llm_wiki.models import ParsedDocument
 FRONTMATTER_DELIMITER = "---"
 MIN_FRONTMATTER_LINES = 2
 WIKILINK_PATTERN = re.compile(r"\[\[([^\[\]]+?)\]\]")
+FENCED_CODE_PATTERN = re.compile(r"```.*?```", re.DOTALL)
+INLINE_CODE_PATTERN = re.compile(r"`[^`]*`")
 
 
 def parse_markdown_file(path: Path) -> ParsedDocument:
@@ -37,10 +39,15 @@ def parse_wikilinks(body: str) -> tuple[str, ...]:
     """Extract deduplicated `[[target]]` wikilink targets in first-seen order.
 
     Alias (`target|alias`) and heading anchors (`target#Section`) are dropped so
-    the target names a document, matching Obsidian's own resolution.
+    the target names a document, matching Obsidian's own resolution. Links inside
+    inline code spans or fenced code blocks are ignored — Obsidian does not treat
+    those as edges either, so a page documenting `[[wikilink]]` syntax does not
+    accidentally link to the pages it names as examples.
     """
+    scrubbed = FENCED_CODE_PATTERN.sub(" ", body)
+    scrubbed = INLINE_CODE_PATTERN.sub(" ", scrubbed)
     targets: list[str] = []
-    for match in WIKILINK_PATTERN.finditer(body):
+    for match in WIKILINK_PATTERN.finditer(scrubbed):
         raw_target = match.group(1)
         target = raw_target.split("|", 1)[0].split("#", 1)[0].strip()
         if target != "" and target not in targets:

@@ -19,9 +19,14 @@ Use this page as the entry point for durable project knowledge.
 
 - [[manual]] — full CLI manual: init, indexing, retrieval, agent integration.
 - [[example]] — architecture guide: how approved knowledge is stored and indexed.
+- [[runbooks/obsidian-usage]] — open this folder in Obsidian, use the graph
+  view, and the conventions for adding new pages.
+- [[references/knowledge-graph]] — how wikilinks, the link table, resolution,
+  and backlinks work under the hood.
 - [[decisions/hook-event-name-invariant]] — the hook event-name invariant and
   why there is no looping `Stop` hook.
 
 Open this folder as an Obsidian vault to browse the same graph visually — every
 double-bracketed link above becomes an edge in the graph view, and the wiki
-engine tracks the same edges through `llm-wiki links <id>`.
+engine tracks the same edges through `llm-wiki links <id>`. See
+[[runbooks/obsidian-usage]] to get started.
