@@ -151,66 +151,52 @@ repeatable troubleshooting findings.
 
 ## Workflow
 
-1. Decide the scope: is this knowledge **global** or **project-specific**?
-   Ask which fits before writing. Default to project scope when unsure — it is
-   cheaper to promote a project note to global later than to retract a wrong
-   global claim from every project.
-   - **Global/common** — true for any project, any repo: language/tooling
-     conventions, cross-project runbooks, org-wide decisions, stable external
-     references. Destination: `~/.llm-wiki/docs/decisions/`, `.../runbooks/`,
-     or `.../references/` (or `$LLM_WIKI_HOME/docs/` when `LLM_WIKI_HOME` is
-     set). Index with **no** `--db` so global config resolution picks
-     `~/.llm-wiki/wiki.db`.
-   - **Project-specific** — only true inside this repo: its architecture,
-     its decisions, its deploy steps, code-tied conventions. Destination:
-     `/path/to/project/docs/decisions/`, `.../runbooks/`, or `.../references/`.
-     Index with an explicit `--db /path/to/project/.llm-wiki/wiki.db`.
-   - Litmus test: "Would another unrelated project want this verbatim?"
-     Yes → global. No → project.
-2. Write or update a Markdown document. Use frontmatter with **YAML list tags**
-   (Obsidian-compatible; the parser also accepts a legacy comma string):
+Default to the **single global wiki**. It is one connected knowledge graph;
+scope by tags, not by separate databases.
+
+1. Write the document under the global docs root:
+   `~/.llm-wiki/docs/decisions/`, `.../runbooks/`, or `.../references/`
+   (or `$LLM_WIKI_HOME/docs/` when `LLM_WIKI_HOME` is set).
+
+2. Tag for scope with **YAML list tags** (Obsidian-compatible; the parser also
+   accepts a legacy comma string). Add a `project:<name>` tag when the knowledge
+   is specific to one repo; omit it when it applies to any project:
 
 ```markdown
 ---
 title: Short Clear Title
 tags:
-  - llm-wiki
-  - project
+  - decision
+  - project:my-app
 ---
 ```
 
-3. Connect it into the graph. Add at least one `[[wikilink]]` from the new
-   document back to that wiki's `[[index]]` (and to any closely related page),
-   and add a matching `[[your-new-doc]]` link from `index.md` so the page is not
-   an orphan. Wikilink targets are the path under `docs/` without the `.md`
-   suffix, e.g. `[[decisions/deploy-rollback]]`. This is what makes the Obsidian
-   graph view and `llm-wiki links <id>` show the relationship.
+3. Connect it into the graph. Add at least one `[[wikilink]]` back to the
+   `[[index]]` (and to any closely related page), and a matching
+   `[[your-new-doc]]` link from `index.md`, so the page is never an orphan.
+   Wikilink targets are the path under `docs/` without the `.md` suffix, e.g.
+   `[[decisions/deploy-rollback]]`.
 
-4. Index it. Project scope — pass the explicit project DB:
-
-```bash
-uv run --directory {{tool_path}} llm-wiki add \\
-  /path/to/project/docs/references/example.md \\
-  --db /path/to/project/.llm-wiki/wiki.db
-```
-
-   Global scope — let global config resolution pick `~/.llm-wiki/wiki.db`:
+4. Index it — let global config resolution pick `~/.llm-wiki/wiki.db`:
 
 ```bash
 uv run --directory {{tool_path}} llm-wiki add \\
   ~/.llm-wiki/docs/references/example.md
 ```
 
-   Reindex both the new doc and `index.md` so the new edges are stored (or run
-   `llm-wiki reindex` over the docs root).
+   Reindex `index.md` too so the new edges are stored, or just run
+   `llm-wiki reindex` over the docs root.
 
-5. Verify recall with `llm-wiki ask-context`, and confirm the graph with
-   `llm-wiki links <id>` (outgoing + backlinks). For global/common knowledge,
-   omit `--db` unless `LLM_WIKI_DB` is intentionally set for a different DB.
+5. Verify: recall with `llm-wiki ask-context "<q>" --tag project:<name>` to
+   confirm the scope filter works, and `llm-wiki links <id>` to confirm the
+   graph edges.
+
+Only fall back to a per-project database (`--db /path/.llm-wiki/wiki.db`) when a
+repo genuinely must never share an index; otherwise stay in the global wiki.
 
 ## Final Response
 
-Report the chosen scope, the promoted file path, DB path, the linked
+Report the promoted file path, any `project:` tag applied, the linked
 `index.md` edge, and the verified recall query.
 """,
     ),

@@ -1,0 +1,98 @@
+"""Tests for tag-scoped retrieval (single global wiki, project: namespaces)."""
+
+from pathlib import Path
+
+from typer.testing import CliRunner
+
+from llm_wiki.cli import app
+from llm_wiki.models import ParsedDocument
+from llm_wiki.store import search, upsert_document
+
+runner = CliRunner()
+
+
+def _index(
+    db_path: Path, path: str, title: str, body: str, tags: tuple[str, ...]
+) -> None:
+    _ = upsert_document(
+        db_path,
+        ParsedDocument(path=path, title=title, tags=tags, body=body),
+    )
+
+
+def test_search_without_tags_returns_every_match(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/a.md", "Alpha", "shared body", ("project:foo",))
+    _index(db_path, "/b.md", "Beta", "shared body", ("project:bar",))
+
+    assert len(search(db_path, "shared", limit=10)) == 2
+
+
+def test_search_filters_to_a_single_tag(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/a.md", "Alpha", "shared body", ("project:foo",))
+    _index(db_path, "/b.md", "Beta", "shared body", ("project:bar",))
+
+    results = search(db_path, "shared", limit=10, tags=("project:foo",))
+
+    assert [r.title for r in results] == ["Alpha"]
+
+
+def test_multiple_tags_require_all_of_them(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/a.md", "Alpha", "shared body", ("project:foo", "runbook"))
+    _index(db_path, "/b.md", "Beta", "shared body", ("project:foo",))
+
+    results = search(db_path, "shared", limit=10, tags=("project:foo", "runbook"))
+
+    assert [r.title for r in results] == ["Alpha"]
+
+
+def test_tag_match_is_exact_not_substring(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/a.md", "Alpha", "shared body", ("project:foo",))
+    _index(db_path, "/b.md", "Beta", "shared body", ("project:foobar",))
+
+    results = search(db_path, "shared", limit=10, tags=("project:foo",))
+
+    assert [r.title for r in results] == ["Alpha"]
+
+
+def test_tag_filter_does_not_lose_matches_beyond_limit(tmp_path: Path) -> None:
+    """A tagged doc ranked below many untagged ones must still surface."""
+    db_path = tmp_path / "wiki.db"
+    for i in range(15):
+        _index(db_path, f"/noise{i}.md", f"Noise {i}", "shared body", ("project:bar",))
+    _index(db_path, "/wanted.md", "Wanted", "shared body", ("project:foo",))
+
+    results = search(db_path, "shared", limit=5, tags=("project:foo",))
+
+    assert [r.title for r in results] == ["Wanted"]
+
+
+def test_search_command_accepts_repeated_tag_option(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/a.md", "Alpha", "shared body", ("project:foo",))
+    _index(db_path, "/b.md", "Beta", "shared body", ("project:bar",))
+
+    result = runner.invoke(
+        app, ["search", "shared", "--db", str(db_path), "--tag", "project:foo"]
+    )
+
+    assert result.exit_code == 0
+    assert "Alpha" in result.output
+    assert "Beta" not in result.output
+
+
+def test_ask_context_command_filters_by_tag(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/a.md", "Alpha", "grounded body", ("project:foo",))
+    _index(db_path, "/b.md", "Beta", "grounded body", ("project:bar",))
+
+    result = runner.invoke(
+        app, ["ask-context", "grounded", "--db", str(db_path), "--tag", "project:bar"]
+    )
+
+    assert result.exit_code == 0
+    assert "Beta" in result.output
+    assert "Alpha" not in result.output
