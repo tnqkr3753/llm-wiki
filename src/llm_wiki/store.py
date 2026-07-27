@@ -188,22 +188,24 @@ def search(
     limit: int,
     min_score: float = 0.0,
     usage_weight: float = 0.0,
+    tags: Sequence[str] = (),
 ) -> list[SearchResult]:
     """Search indexed documents with SQLite FTS5.
 
     With a positive ``usage_weight``, documents that have actually been
     retrieved for grounding are promoted over equally relevant ones that
     never were. A weight of zero leaves BM25 order untouched.
+
+    ``tags`` scopes the results to documents carrying *every* given tag (exact
+    membership, not substring). This is how one shared wiki is partitioned —
+    e.g. ``project:foo`` — without splitting the index into separate databases.
     """
     initialize(db_path)
     fts_query = _literal_fts_query(query)
     if fts_query == "":
         return []
-    fetch_limit = (
-        limit
-        if usage_weight <= 0
-        else max(limit * CANDIDATE_MULTIPLIER, MIN_CANDIDATES)
-    )
+    widen = usage_weight > 0 or bool(tags)
+    fetch_limit = max(limit * CANDIDATE_MULTIPLIER, MIN_CANDIDATES) if widen else limit
     with closing(sqlite3.connect(db_path)) as connection:
         rows = _fetch_all(
             connection,
@@ -225,9 +227,19 @@ def search(
         )
 
     ranked = [row for row in rows if _row_bm25_score(row) >= min_score]
+    if tags:
+        ranked = _filter_by_tags(ranked, tags)
     if usage_weight > 0:
         ranked = _rank_by_usage(db_path, ranked, usage_weight)
     return [_result_from_row(row) for row in ranked[:limit]]
+
+
+def _filter_by_tags(rows: list[SqlRow], tags: Sequence[str]) -> list[SqlRow]:
+    """Keep only rows whose tag set contains every requested tag."""
+    wanted = {tag.strip() for tag in tags if tag.strip() != ""}
+    if not wanted:
+        return rows
+    return [row for row in rows if wanted <= set(_split_tags(_row_str(row, 3)))]
 
 
 def _rank_by_usage(

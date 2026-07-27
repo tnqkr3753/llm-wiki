@@ -347,7 +347,8 @@ def test_codex_install_skill_writes_all_llm_wiki_skills(tmp_path: Path) -> None:
     )
     assert "~/.llm-wiki/docs/references/example.md" in promote_text
     assert "LLM_WIKI_HOME" in promote_text
-    assert "global/common knowledge" in promote_text
+    assert "global wiki" in promote_text
+    assert "project:<name>" in promote_text
     hooks_text = (skills_dir / "llm-wiki-hooks" / "SKILL.md").read_text(
         encoding="utf-8",
     )

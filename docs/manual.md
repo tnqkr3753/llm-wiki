@@ -111,6 +111,21 @@ llm-wiki ask-context "How do we deploy?"
 
 The output is intentionally plain text so it can be pasted into an agent prompt.
 
+### Scoping with tags
+
+LLM Wiki is one connected knowledge graph, so the recommended setup is a single
+global wiki with project-specific documents tagged `project:<name>` rather than
+split into separate databases (see `docs/decisions/single-global-wiki-tag-scope.md`).
+Use `--tag` to scope any search to documents carrying every given tag (exact
+match, repeatable):
+
+```bash
+llm-wiki search deployment --tag project:my-app
+llm-wiki ask-context "How do we deploy?" --tag project:my-app --tag runbook
+```
+
+With no `--tag`, retrieval spans the whole graph.
+
 ## 5. Path Resolution
 
 Every command that reads or writes the index resolves the SQLite database in

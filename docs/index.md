@@ -23,6 +23,8 @@ Use this page as the entry point for durable project knowledge.
   view, and the conventions for adding new pages.
 - [[references/knowledge-graph]] — how wikilinks, the link table, resolution,
   and backlinks work under the hood.
+- [[decisions/single-global-wiki-tag-scope]] — one global wiki, scoped by
+  `project:` tags instead of per-project databases.
 - [[decisions/hook-event-name-invariant]] — the hook event-name invariant and
   why there is no looping `Stop` hook.
 

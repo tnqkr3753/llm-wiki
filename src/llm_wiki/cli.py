@@ -379,9 +379,21 @@ def reindex(
         raise typer.Exit(1)
 
 
-def _print_search_results(query: str, db: Path | None, limit: int) -> None:
+TagOption = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--tag",
+        help="Scope to documents with this tag (repeatable; all must match). "
+        "Use e.g. project:foo to partition one shared wiki.",
+    ),
+]
+
+
+def _print_search_results(
+    query: str, db: Path | None, limit: int, tags: list[str] | None
+) -> None:
     try:
-        results = search(resolve_db_path(db), query, limit)
+        results = search(resolve_db_path(db), query, limit, tags=tags or ())
     except WikiError as exc:
         console.print(f"Error: {exc}")
         raise typer.Exit(1) from exc
@@ -400,9 +412,10 @@ def search_alias(
     query: Annotated[str, typer.Argument(help="Full-text query.")],
     db: DbOption = None,
     limit: LimitOption = DEFAULT_LIMIT,
+    tag: TagOption = None,
 ) -> None:
     """Search indexed documents."""
-    _print_search_results(query=query, db=db, limit=limit)
+    _print_search_results(query=query, db=db, limit=limit, tags=tag)
 
 
 @app.command()
@@ -466,6 +479,7 @@ def ask_context(
             help="Promote documents that were retrieved before (0 disables).",
         ),
     ] = DEFAULT_USAGE_WEIGHT,
+    tag: TagOption = None,
 ) -> None:
     """Print grounded snippets to paste into an LLM prompt."""
     db_path = resolve_db_path(db)
@@ -476,6 +490,7 @@ def ask_context(
             limit,
             min_score=min_score,
             usage_weight=usage_weight,
+            tags=tag or (),
         )
     except WikiError as exc:
         console.print(f"Error: {exc}")
