@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol, cast, runtime_checkable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from llm_wiki.config import find_project_config, resolve_home_path
 from llm_wiki.errors import ConfigReadError
@@ -108,28 +108,48 @@ def load_provider(settings: EmbeddingSettings) -> EmbeddingProvider | None:
 
 
 def describe_settings(settings: EmbeddingSettings | None) -> str:
-    """Summarize embedding configuration for diagnostics."""
+    """Summarize embedding configuration for diagnostics.
+
+    The endpoint is shown with any credentials stripped: `doctor` output is
+    routinely pasted into issues and logs, so a `user:password@host` or a
+    `?token=` query must never leave the machine through a diagnostic.
+    """
     if settings is None:
         return "Not configured (BM25 only)"
+    endpoint_display = (
+        None if settings.endpoint is None else _display_endpoint(settings.endpoint)
+    )
     if settings.is_blocked:
         return (
             f"{settings.model} - remote endpoint blocked "
-            f"({settings.endpoint}); set {ENV_EMBED_ALLOW_REMOTE}=1 to allow"
+            f"({endpoint_display}); set {ENV_EMBED_ALLOW_REMOTE}=1 to allow"
         )
-    where = settings.endpoint or "local model"
+    where = endpoint_display or "local model"
     dimension = "" if settings.dimension is None else f", dim {settings.dimension}"
     return f"{settings.model} via {where}{dimension} - no backend installed yet"
 
 
+def _display_endpoint(endpoint: str) -> str:
+    """Render an endpoint for humans without its userinfo, query, or fragment."""
+    parsed = urlparse(endpoint)
+    host = parsed.hostname or ""
+    netloc = f"{host}:{parsed.port}" if parsed.port is not None else host
+    return urlunparse((parsed.scheme, netloc, parsed.path, "", "", ""))
+
+
 def _config_section(start_path: Path | None) -> dict[str, object]:
-    """Read the [embedding] table from the project or global config."""
+    """Merge the [embedding] table from global, then project, per field.
+
+    Project keys override global keys, and each field then resolves
+    independently against the environment in ``resolve_embedding_settings`` —
+    so the documented environment -> project -> global precedence holds per
+    field, not per whole section.
+    """
     search_start = Path.cwd() if start_path is None else start_path
+    global_section = _read_section(resolve_home_path(None) / "config.toml")
     project_config = find_project_config(search_start)
-    if project_config is not None:
-        section = _read_section(project_config)
-        if section:
-            return section
-    return _read_section(resolve_home_path(None) / "config.toml")
+    project_section = {} if project_config is None else _read_section(project_config)
+    return {**global_section, **project_section}
 
 
 def _read_section(config_path: Path) -> dict[str, object]:

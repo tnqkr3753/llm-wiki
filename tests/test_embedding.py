@@ -219,3 +219,75 @@ def test_doctor_warns_about_a_blocked_remote_endpoint(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "remote endpoint blocked" in result.output
+
+
+def test_global_config_supplies_fields_absent_from_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-field resolution: project supplies endpoint, global supplies model."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.toml").write_text(
+        "[embedding]\nmodel = 'global-model'\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("LLM_WIKI_HOME", str(home))
+    project = tmp_path / "project"
+    _write_project_config(project, "[embedding]\nendpoint = 'http://127.0.0.1:11434'\n")
+
+    settings = resolve_embedding_settings(start_path=project)
+
+    assert settings is not None
+    assert settings.model == "global-model"
+    assert settings.endpoint == "http://127.0.0.1:11434"
+
+
+def test_project_config_overrides_global_per_field(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.toml").write_text(
+        "[embedding]\nmodel = 'global-model'\ndimension = 256\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("LLM_WIKI_HOME", str(home))
+    project = tmp_path / "project"
+    _write_project_config(project, "[embedding]\nmodel = 'project-model'\n")
+
+    settings = resolve_embedding_settings(start_path=project)
+
+    assert settings is not None
+    assert settings.model == "project-model"
+    assert settings.dimension == 256
+
+
+def test_doctor_does_not_leak_endpoint_credentials(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    _write_project_config(
+        project,
+        "[embedding]\nmodel = 'bge-m3'\n"
+        "endpoint = 'https://user:s3cr3t@api.example.com/embed?token=abc'\n"
+        "allow_remote = true\n",
+    )
+
+    result = runner.invoke(app, ["doctor", "-p", str(project)])
+
+    assert result.exit_code == 0
+    assert "s3cr3t" not in result.output
+    assert "token=abc" not in result.output
+    assert "api.example.com" in result.output
+
+
+def test_doctor_survives_a_malformed_project_config(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    config_dir = project / ".llm-wiki"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.toml").write_text(
+        "this is = not = valid toml\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["doctor", "-p", str(project)])
+
+    assert result.exit_code == 0
+    assert "Embedding" in result.output

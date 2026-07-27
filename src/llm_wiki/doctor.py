@@ -9,6 +9,7 @@ from rich.console import Console
 
 from llm_wiki.agents import ALL_TARGETS
 from llm_wiki.embedding import describe_settings, resolve_embedding_settings
+from llm_wiki.errors import WikiError
 
 console = Console()
 
@@ -59,13 +60,17 @@ def run_doctor(project_path: Path | None = None) -> None:
         console.print(f"[yellow]![/yellow] Wiki Database: Not found at {wiki_db}")
 
     # 4. Embedding configuration (retrieval stays BM25 until a backend exists)
-    settings = resolve_embedding_settings(target_path)
-    marker = (
-        "[yellow]![/yellow]"
-        if settings is not None and settings.is_blocked
-        else ("[green]✓[/green]" if settings is not None else "[dim]-[/dim]")
-    )
-    console.print(f"{marker} Embedding: {describe_settings(settings)}")
+    try:
+        settings = resolve_embedding_settings(target_path)
+    except WikiError as exc:
+        console.print(f"[yellow]![/yellow] Embedding: config unreadable ({exc})")
+    else:
+        marker = (
+            "[yellow]![/yellow]"
+            if settings is not None and settings.is_blocked
+            else ("[green]✓[/green]" if settings is not None else "[dim]-[/dim]")
+        )
+        console.print(f"{marker} Embedding: {describe_settings(settings)}")
 
     # 5. Agent Skills & Hooks Inspection
     console.print("\n[bold]Agent Skill & Hook Installations:[/bold]")
