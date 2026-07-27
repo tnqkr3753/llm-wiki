@@ -134,6 +134,21 @@ Print source-grounded context for an LLM prompt:
 llm-wiki ask-context "approved knowledge"
 ```
 
+`ask-context` is the only command that records retrievals, because grounding an
+answer is the signal worth ranking on. Documents that have been retrieved
+before are promoted over equally relevant ones that never were; pass
+`--usage-weight 0` for pure BM25 order, or raise it to lean harder on history.
+
+Report which documents are earning their place:
+
+```bash
+llm-wiki usage
+```
+
+Documents with a count of zero were never used to ground an answer — they are
+promotion candidates that did not pay off, and the first thing to review when
+the wiki grows noisy.
+
 Database path resolution is explicit and predictable:
 
 ```text

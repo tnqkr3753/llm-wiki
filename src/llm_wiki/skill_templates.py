@@ -218,20 +218,37 @@ test -f ~/.llm-wiki/config.toml
 
 ## Reindex
 
-For each Markdown file, run:
+Reindex the whole project in one pass. This also drops index entries whose
+Markdown file was deleted or renamed, and it names any file it cannot parse:
 
 ```bash
-uv run --directory {{tool_path}} llm-wiki add /path/to/project/docs/<file>.md \\
+uv run --directory {{tool_path}} llm-wiki reindex -p /path/to/project \\
   --db /path/to/project/.llm-wiki/wiki.db
 ```
+
+Use `llm-wiki add <file>` only when indexing a single new document.
+
+## Retrieval Usage
+
+Ask which documents are actually earning their place:
+
+```bash
+uv run --directory {{tool_path}} llm-wiki usage \\
+  --db /path/to/project/.llm-wiki/wiki.db
+```
+
+Documents that were never retrieved are promotion candidates that did not pay
+off: either their titles and wording do not match how questions are asked, or
+the knowledge was not durable enough to promote. Report them so the user can
+rewrite or retire them. Never delete them yourself.
 
 Flag missing frontmatter, empty documents, stale names, or failed recall. Do not
 delete DB files or user documents unless the user explicitly asks.
 
 ## Final Report
 
-Report checked file count, reindexed file count, findings, recall verification,
-and confirm no files were deleted.
+Report checked file count, reindexed file count, removed entries, never-retrieved
+documents, findings, recall verification, and confirm no files were deleted.
 """,
     ),
     SkillSpec(

@@ -28,6 +28,17 @@ class StoredDocument:
 
 
 @dataclass(frozen=True, slots=True)
+class DocumentUsage:
+    """How often one indexed document has been retrieved for grounding."""
+
+    id: DocumentId
+    path: str
+    title: str
+    retrieved_count: int
+    last_retrieved_at: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ReindexFailure:
     """One document that could not be indexed during a directory reindex."""
 

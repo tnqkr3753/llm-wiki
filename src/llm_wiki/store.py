@@ -1,9 +1,11 @@
 """SQLite FTS-backed document store."""
 
+import math
 import re
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
@@ -11,6 +13,7 @@ from llm_wiki.errors import DocumentNotFoundError, SqlColumnTypeError, WikiError
 from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import (
     DocumentId,
+    DocumentUsage,
     ParsedDocument,
     ReindexFailure,
     ReindexResult,
@@ -23,6 +26,8 @@ type SqlRow = Sequence[SqlValue]
 
 EXCLUDED_DIR_NAMES: Final = frozenset({"venv", "node_modules", "__pycache__"})
 BM25_COLUMN_INDEX: Final = 5
+CANDIDATE_MULTIPLIER: Final = 4
+MIN_CANDIDATES: Final = 20
 
 
 SCHEMA = """
@@ -32,6 +37,14 @@ CREATE TABLE IF NOT EXISTS documents (
     title TEXT NOT NULL,
     tags TEXT NOT NULL,
     body TEXT NOT NULL
+);
+"""
+
+SCHEMA_USAGE = """
+CREATE TABLE IF NOT EXISTS document_usage (
+    document_id INTEGER PRIMARY KEY,
+    retrieved_count INTEGER NOT NULL DEFAULT 0,
+    last_retrieved_at TEXT
 );
 """
 
@@ -63,6 +76,7 @@ def initialize(db_path: Path) -> None:
     _ensure_parent(db_path)
     with closing(sqlite3.connect(db_path)) as connection:
         _ = connection.executescript(SCHEMA)
+        _ = connection.executescript(SCHEMA_USAGE)
 
         # Ensure documents_fts exists with trigram (or fallback unicode61)
         tables = _fetch_all(
@@ -141,13 +155,27 @@ def upsert_document(db_path: Path, document: ParsedDocument) -> DocumentId:
 
 
 def search(
-    db_path: Path, query: str, limit: int, min_score: float = 0.0
+    db_path: Path,
+    query: str,
+    limit: int,
+    min_score: float = 0.0,
+    usage_weight: float = 0.0,
 ) -> list[SearchResult]:
-    """Search indexed documents with SQLite FTS5."""
+    """Search indexed documents with SQLite FTS5.
+
+    With a positive ``usage_weight``, documents that have actually been
+    retrieved for grounding are promoted over equally relevant ones that
+    never were. A weight of zero leaves BM25 order untouched.
+    """
     initialize(db_path)
     fts_query = _literal_fts_query(query)
     if fts_query == "":
         return []
+    fetch_limit = (
+        limit
+        if usage_weight <= 0
+        else max(limit * CANDIDATE_MULTIPLIER, MIN_CANDIDATES)
+    )
     with closing(sqlite3.connect(db_path)) as connection:
         rows = _fetch_all(
             connection,
@@ -165,10 +193,108 @@ def search(
             ORDER BY bm25_score DESC
             LIMIT ?
             """,
-            (fts_query, limit),
+            (fts_query, fetch_limit),
         )
 
-    return [_result_from_row(row) for row in rows if _row_bm25_score(row) >= min_score]
+    ranked = [row for row in rows if _row_bm25_score(row) >= min_score]
+    if usage_weight > 0:
+        ranked = _rank_by_usage(db_path, ranked, usage_weight)
+    return [_result_from_row(row) for row in ranked[:limit]]
+
+
+def _rank_by_usage(
+    db_path: Path,
+    rows: list[SqlRow],
+    usage_weight: float,
+) -> list[SqlRow]:
+    """Re-rank BM25 candidates by how often each was retrieved before."""
+    counts = _retrieved_counts(db_path, [_row_int(row, 0) for row in rows])
+    return sorted(
+        rows,
+        key=lambda row: (
+            -(
+                _row_bm25_score(row)
+                * (1.0 + usage_weight * math.log1p(counts.get(_row_int(row, 0), 0)))
+            )
+        ),
+    )
+
+
+def _retrieved_counts(db_path: Path, document_ids: list[int]) -> dict[int, int]:
+    if not document_ids:
+        return {}
+    placeholders = ", ".join("?" for _ in document_ids)
+    with closing(sqlite3.connect(db_path)) as connection:
+        rows = _fetch_all(
+            connection,
+            f"""
+            SELECT document_id, retrieved_count
+            FROM document_usage
+            WHERE document_id IN ({placeholders})
+            """,  # noqa: S608 - placeholders are generated, never user input
+            tuple(document_ids),
+        )
+    return {_row_int(row, 0): _row_int(row, 1) for row in rows}
+
+
+def record_retrieval(
+    db_path: Path,
+    document_ids: Sequence[DocumentId],
+    now: datetime | None = None,
+) -> None:
+    """Count one grounding use for each retrieved document."""
+    if not document_ids:
+        return
+    initialize(db_path)
+    moment = (now or datetime.now(UTC)).isoformat(timespec="seconds")
+    with closing(sqlite3.connect(db_path)) as connection:
+        for document_id in document_ids:
+            _ = connection.execute(
+                """
+                INSERT INTO document_usage (
+                    document_id, retrieved_count, last_retrieved_at
+                )
+                VALUES (?, 1, ?)
+                ON CONFLICT(document_id) DO UPDATE SET
+                    retrieved_count = retrieved_count + 1,
+                    last_retrieved_at = excluded.last_retrieved_at
+                """,
+                (int(document_id), moment),
+            )
+        connection.commit()
+
+
+def usage_report(db_path: Path) -> tuple[DocumentUsage, ...]:
+    """List every indexed document, most retrieved first."""
+    initialize(db_path)
+    with closing(sqlite3.connect(db_path)) as connection:
+        rows = _fetch_all(
+            connection,
+            """
+            SELECT
+                d.id,
+                d.path,
+                d.title,
+                COALESCE(u.retrieved_count, 0) AS retrieved_count,
+                u.last_retrieved_at
+            FROM documents d
+            LEFT JOIN document_usage u ON u.document_id = d.id
+            ORDER BY retrieved_count DESC, d.id ASC
+            """,
+            (),
+        )
+    return tuple(_usage_from_row(row) for row in rows)
+
+
+def _usage_from_row(row: SqlRow) -> DocumentUsage:
+    last_retrieved = row[4]
+    return DocumentUsage(
+        id=DocumentId(_row_int(row, 0)),
+        path=_row_str(row, 1),
+        title=_row_str(row, 2),
+        retrieved_count=_row_int(row, 3),
+        last_retrieved_at=last_retrieved if isinstance(last_retrieved, str) else None,
+    )
 
 
 def _row_bm25_score(row: SqlRow) -> float:
@@ -347,6 +473,10 @@ def _remove_missing_documents(db_path: Path, root: Path) -> int:
             )
             _ = connection.execute(
                 "DELETE FROM documents WHERE id = ?",
+                (document_id,),
+            )
+            _ = connection.execute(
+                "DELETE FROM document_usage WHERE document_id = ?",
                 (document_id,),
             )
         connection.commit()

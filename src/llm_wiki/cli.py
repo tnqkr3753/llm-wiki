@@ -28,10 +28,18 @@ from llm_wiki.hook_stats import show_hook_stats
 from llm_wiki.init_project import InitResult, initialize_global, initialize_project
 from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import DocumentId
-from llm_wiki.store import get_document, reindex_directory, search, upsert_document
+from llm_wiki.store import (
+    get_document,
+    record_retrieval,
+    reindex_directory,
+    search,
+    upsert_document,
+    usage_report,
+)
 from llm_wiki.watcher import run_watcher
 
 DEFAULT_LIMIT = 5
+DEFAULT_USAGE_WEIGHT = 0.3
 
 app = typer.Typer(no_args_is_help=True)
 codex_app = typer.Typer(no_args_is_help=True)
@@ -424,10 +432,25 @@ def ask_context(
     min_score: Annotated[
         float, typer.Option(help="Minimum BM25 score threshold.")
     ] = 0.0,
+    usage_weight: Annotated[
+        float,
+        typer.Option(
+            "--usage-weight",
+            min=0.0,
+            help="Promote documents that were retrieved before (0 disables).",
+        ),
+    ] = DEFAULT_USAGE_WEIGHT,
 ) -> None:
     """Print grounded snippets to paste into an LLM prompt."""
+    db_path = resolve_db_path(db)
     try:
-        results = search(resolve_db_path(db), query, limit, min_score=min_score)
+        results = search(
+            db_path,
+            query,
+            limit,
+            min_score=min_score,
+            usage_weight=usage_weight,
+        )
     except WikiError as exc:
         console.print(f"Error: {exc}")
         raise typer.Exit(1) from exc
@@ -435,10 +458,44 @@ def ask_context(
         console.print("No context found")
         return
 
+    # Grounding is the signal worth ranking on, so only ask-context records it.
+    record_retrieval(db_path, [result.id for result in results])
+
     console.print("Use this context before answering:")
     for result in results:
         console.print(f"- [{int(result.id)}] {result.title} ({result.path})")
         console.print(f"  {result.snippet}")
+
+
+@app.command("usage")
+def usage(
+    db: DbOption = None,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", min=1, help="Maximum retrieved documents to list."),
+    ] = 20,
+) -> None:
+    """Report how often each document has been retrieved for grounding."""
+    try:
+        report = usage_report(resolve_db_path(db))
+    except WikiError as exc:
+        console.print(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+    if len(report) == 0:
+        console.print("No documents indexed")
+        return
+
+    retrieved = [item for item in report if item.retrieved_count > 0]
+    never = [item for item in report if item.retrieved_count == 0]
+
+    for item in retrieved[:limit]:
+        last_seen = item.last_retrieved_at or "-"
+        console.print(
+            f"{item.retrieved_count} | {item.title} | {item.path} | {last_seen}"
+        )
+    console.print(f"documents: {len(report)} | never retrieved: {len(never)}")
+    for item in never[:limit]:
+        console.print(f"  0 | {item.title} | {item.path}")
 
 
 @app.command("doctor")
