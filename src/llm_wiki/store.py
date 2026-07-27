@@ -97,11 +97,12 @@ def initialize(db_path: Path) -> None:
 def upsert_document(db_path: Path, document: ParsedDocument) -> DocumentId:
     """Insert or replace one parsed document in the full-text index."""
     initialize(db_path)
+    stored_path = canonical_path(document.path)
     with closing(sqlite3.connect(db_path)) as connection:
         existing = _fetch_one(
             connection,
             "SELECT id FROM documents WHERE path = ?",
-            (document.path,),
+            (stored_path,),
         )
         tags_text = ", ".join(document.tags)
         if existing is None:
@@ -110,7 +111,7 @@ def upsert_document(db_path: Path, document: ParsedDocument) -> DocumentId:
                 INSERT INTO documents (path, title, tags, body)
                 VALUES (?, ?, ?, ?)
                 """,
-                (document.path, document.title, tags_text, document.body),
+                (stored_path, document.title, tags_text, document.body),
             )
             document_id = DocumentId(_last_insert_id(cursor))
         else:
@@ -295,12 +296,28 @@ def reindex_directory(db_path: Path, root_path: Path) -> ReindexResult:
     return ReindexResult(indexed=indexed, removed=removed, failures=tuple(failures))
 
 
+def canonical_path(path: str) -> str:
+    """Resolve a document path to a stable absolute form for the index.
+
+    Storing the canonical path keeps one file from being indexed twice under
+    different spellings (relative vs absolute, `..` segments, `/tmp` symlinked
+    to `/private/tmp`), which would otherwise create duplicate rows.
+    """
+    return str(Path(path).expanduser().resolve())
+
+
 def iter_markdown_files(root_path: Path) -> Iterator[Path]:
     """Yield every indexable Markdown file under root_path in stable order."""
     root = root_path.expanduser().resolve()
     for file_path in sorted(root.rglob("*.md")):
-        if not _is_excluded(file_path, root):
-            yield file_path
+        if _is_excluded(file_path, root):
+            continue
+        # A symlink (or `..`) can name a file that escapes the root; indexing it
+        # would pull external content into this wiki. Only crawl files that
+        # actually live under the root once resolved.
+        if not file_path.resolve().is_relative_to(root):
+            continue
+        yield file_path
 
 
 def _is_excluded(file_path: Path, root: Path) -> bool:
@@ -341,8 +358,14 @@ def _is_stale_document(stored_path: str, root: Path) -> bool:
 
     Relative stored paths are never treated as stale: they were indexed
     against an unknown working directory, so their absence cannot be proven.
+    The path is resolved before the root check so a `..` segment cannot make a
+    document that lives outside the root look like it belongs to it — which
+    would let reindexing one root delete another root's documents.
     """
     path = Path(stored_path)
-    if not path.is_absolute() or not path.is_relative_to(root):
+    if not path.is_absolute():
         return False
-    return not path.is_file()
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root):
+        return False
+    return not resolved.is_file()
