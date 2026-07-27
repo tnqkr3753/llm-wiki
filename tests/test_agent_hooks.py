@@ -18,8 +18,12 @@ def test_hook_script_truncates_at_paragraph_boundary(tmp_path: Path) -> None:
     (project_dir / ".llm-wiki").mkdir()
     (project_dir / ".llm-wiki" / "config.toml").write_text("", encoding="utf-8")
 
-    result = install_agent_hooks(
-        CODEX_TARGET, project_dir, tool_path=tmp_path / "tool", force=True, include_prompt_auto_inject=True
+    _ = install_agent_hooks(
+        CODEX_TARGET,
+        project_dir,
+        tool_path=tmp_path / "tool",
+        force=True,
+        include_prompt_auto_inject=True,
     )
     script_path = project_dir / ".codex" / "hooks" / "llm_wiki_user_prompt.py"
 
@@ -28,7 +32,9 @@ def test_hook_script_truncates_at_paragraph_boundary(tmp_path: Path) -> None:
 
     p1 = "A" * 1200
     p2 = "B" * 1500
-    fake_output = f"Use this context before answering:\n- [1] Test (test.md)\n  {p1}\n\n  {p2}"
+    fake_output = (
+        f"Use this context before answering:\n- [1] Test (test.md)\n  {p1}\n\n  {p2}"
+    )
 
     mock_cli = bin_dir / "llm-wiki"
     mock_cli.write_text(
@@ -38,6 +44,7 @@ def test_hook_script_truncates_at_paragraph_boundary(tmp_path: Path) -> None:
     mock_cli.chmod(0o755)
 
     import os
+
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
 
     event = {
@@ -68,8 +75,12 @@ def test_hook_script_deduplication(tmp_path: Path) -> None:
     (project_dir / ".llm-wiki").mkdir()
     (project_dir / ".llm-wiki" / "config.toml").write_text("", encoding="utf-8")
 
-    result = install_agent_hooks(
-        CODEX_TARGET, project_dir, tool_path=tmp_path / "tool", force=True, include_prompt_auto_inject=True
+    _ = install_agent_hooks(
+        CODEX_TARGET,
+        project_dir,
+        tool_path=tmp_path / "tool",
+        force=True,
+        include_prompt_auto_inject=True,
     )
     script_path = project_dir / ".codex" / "hooks" / "llm_wiki_user_prompt.py"
 
@@ -84,12 +95,15 @@ def test_hook_script_deduplication(tmp_path: Path) -> None:
 
     mock_cli = bin_dir / "llm-wiki"
     mock_cli.write_text(
-        f"#!/usr/bin/env python3\nfrom pathlib import Path\nprint(Path({str(output_file)!r}).read_text())\n",
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        f"print(Path({str(output_file)!r}).read_text())\n",
         encoding="utf-8",
     )
     mock_cli.chmod(0o755)
 
     import os
+
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
     session_id = f"test_session_dedup_{uuid.uuid4().hex}"
     event = {
@@ -136,14 +150,20 @@ def test_hook_script_deduplication(tmp_path: Path) -> None:
     assert "hookSpecificOutput" in proc3.stdout
 
 
-def test_hook_script_filters_short_prompts_and_low_relevance_context(tmp_path: Path) -> None:
+def test_hook_script_filters_short_prompts_and_low_relevance_context(
+    tmp_path: Path,
+) -> None:
     project_dir = tmp_path / "project"
     project_dir.mkdir()
     (project_dir / ".llm-wiki").mkdir()
     (project_dir / ".llm-wiki" / "config.toml").write_text("", encoding="utf-8")
 
-    result = install_agent_hooks(
-        CODEX_TARGET, project_dir, tool_path=tmp_path / "tool", force=True, include_prompt_auto_inject=True
+    _ = install_agent_hooks(
+        CODEX_TARGET,
+        project_dir,
+        tool_path=tmp_path / "tool",
+        force=True,
+        include_prompt_auto_inject=True,
     )
     script_path = project_dir / ".codex" / "hooks" / "llm_wiki_user_prompt.py"
 
@@ -151,12 +171,14 @@ def test_hook_script_filters_short_prompts_and_low_relevance_context(tmp_path: P
     bin_dir.mkdir()
     mock_cli = bin_dir / "llm-wiki"
     mock_cli.write_text(
-        "#!/usr/bin/env python3\nprint('Use this context before answering:\\n- [1] title')\n",
+        "#!/usr/bin/env python3\n"
+        "print('Use this context before answering:\\n- [1] title')\n",
         encoding="utf-8",
     )
     mock_cli.chmod(0o755)
 
     import os
+
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
 
     # Short prompt (< 3 chars)

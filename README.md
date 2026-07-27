@@ -97,6 +97,25 @@ Index one Markdown document:
 llm-wiki add docs/example.md
 ```
 
+Reindex every Markdown document under a project, including deletions:
+
+```bash
+llm-wiki reindex -p /path/to/project
+```
+
+`reindex` walks the project (skipping hidden and vendored directories),
+re-indexes every Markdown file, and drops index entries whose source file no
+longer exists. Only documents stored with an absolute path under that root are
+removed, so reindexing one project never evicts another root's documents. The
+command exits non-zero and names each file it could not parse.
+
+Keep the index current automatically:
+
+```bash
+llm-wiki watch -p /path/to/project        # poll for changes and reindex
+llm-wiki git-hook install -p /path/to/project  # reindex after each commit
+```
+
 Search the local index:
 
 ```bash

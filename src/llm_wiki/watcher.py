@@ -2,16 +2,25 @@
 
 import time
 from pathlib import Path
+from typing import Final
 
 from rich.console import Console
 
 from llm_wiki.config import resolve_db_path
-from llm_wiki.store import reindex_directory
+from llm_wiki.errors import WikiError
+from llm_wiki.store import iter_markdown_files, reindex_directory
 
 console = Console()
 
+DEFAULT_INTERVAL: Final = 2.0
 
-def run_watcher(project_path: Path | None = None, interval: float = 2.0) -> None:
+type MtimeSnapshot = dict[Path, float]
+
+
+def run_watcher(
+    project_path: Path | None = None,
+    interval: float = DEFAULT_INTERVAL,
+) -> None:
     """Watch project markdown files and automatically reindex on change."""
     target_path = (project_path or Path.cwd()).expanduser().resolve()
     db_path = resolve_db_path(None)
@@ -20,50 +29,70 @@ def run_watcher(project_path: Path | None = None, interval: float = 2.0) -> None
     )
     console.print("Press Ctrl+C to stop watching.\n")
 
-    mtime_cache: dict[Path, float] = {}
-
-    def scan_md_files() -> dict[Path, float]:
-        current: dict[Path, float] = {}
-        for file_path in target_path.rglob("*.md"):
-            # Exclude hidden directories and venvs
-            if any(part.startswith(".") or part in ("venv", "node_modules", "__pycache__") for part in file_path.parts):
-                continue
-            try:
-                current[file_path] = file_path.stat().st_mtime
-            except Exception:
-                pass
-        return current
-
-    mtime_cache = scan_md_files()
-    console.print(f"Tracking [green]{len(mtime_cache)}[/green] markdown files...")
+    snapshot = scan_mtimes(target_path)
+    console.print(f"Tracking [green]{len(snapshot)}[/green] markdown files...")
 
     try:
         while True:
             time.sleep(interval)
-            latest = scan_md_files()
-            changed = False
+            latest = scan_mtimes(target_path)
+            if latest == snapshot:
+                continue
 
-            for path, mtime in latest.items():
-                if path not in mtime_cache or mtime_cache[path] != mtime:
-                    console.print(f"[yellow]Modified:[yellow] {path.relative_to(target_path)}")
-                    changed = True
-                    break
-
-            if not changed:
-                deleted = set(mtime_cache.keys()) - set(latest.keys())
-                if deleted:
-                    console.print(f"[red]Deleted file detected.[/red]")
-                    changed = True
-
-            if changed:
-                mtime_cache = latest
-                console.print("Re-indexing wiki database...")
-                try:
-                    count = reindex_directory(db_path, target_path)
-                    console.print(
-                        f"[green]✓ Re-indexed {count} documents.[/green]\n"
-                    )
-                except Exception as exc:
-                    console.print(f"[red]Failed to reindex: {exc}[/red]\n")
+            for line in describe_changes(snapshot, latest, target_path):
+                console.print(line)
+            snapshot = latest
+            _reindex_once(db_path, target_path)
     except KeyboardInterrupt:
         console.print("\n[dim]Watcher stopped.[/dim]")
+
+
+def scan_mtimes(target_path: Path) -> MtimeSnapshot:
+    """Collect modification times for every indexable markdown file."""
+    snapshot: MtimeSnapshot = {}
+    for file_path in iter_markdown_files(target_path):
+        try:
+            snapshot[file_path] = file_path.stat().st_mtime
+        except OSError:
+            # The file vanished mid-scan; the next pass reports it as deleted.
+            continue
+    return snapshot
+
+
+def describe_changes(
+    previous: MtimeSnapshot,
+    latest: MtimeSnapshot,
+    target_path: Path,
+) -> tuple[str, ...]:
+    """Render one console line per added, modified, or deleted file."""
+    added = [
+        f"[green]Added:[/green] {path.relative_to(target_path)}"
+        for path in sorted(set(latest) - set(previous))
+    ]
+    modified = [
+        f"[yellow]Modified:[/yellow] {path.relative_to(target_path)}"
+        for path in sorted(set(previous) & set(latest))
+        if previous[path] != latest[path]
+    ]
+    deleted = [
+        f"[red]Deleted:[/red] {path.relative_to(target_path)}"
+        for path in sorted(set(previous) - set(latest))
+    ]
+    return (*added, *modified, *deleted)
+
+
+def _reindex_once(db_path: Path, target_path: Path) -> None:
+    console.print("Re-indexing wiki database...")
+    try:
+        result = reindex_directory(db_path, target_path)
+    except WikiError as exc:
+        console.print(f"[red]Failed to reindex: {exc}[/red]\n")
+        return
+
+    console.print(
+        f"[green]✓ Re-indexed {result.indexed} documents "
+        f"({result.removed} removed).[/green]"
+    )
+    for failure in result.failures:
+        console.print(f"[red]  ! {failure.path}: {failure.reason}[/red]")
+    console.print("")

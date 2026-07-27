@@ -60,7 +60,7 @@ def install_agent_hooks(
 
         hooks_data = _load_hooks_json(hooks_path)
         _merge_hook(hooks_data, target, script_path)
-        hooks_path.write_text(
+        _ = hooks_path.write_text(
             json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
@@ -89,7 +89,7 @@ def install_guardrail_hook(
     project_path: Path,
     force: bool = True,
 ) -> HookInstallResult:
-    """Install a selective PreToolUse guardrail hook for sensitive file modifications."""
+    """Install a PreToolUse guardrail hook for sensitive file modifications."""
     return _install_smart_hook(
         target,
         project_path,
@@ -118,12 +118,12 @@ def _install_smart_hook(
 
     hooks_dir.mkdir(parents=True, exist_ok=True)
     if force or not script_path.exists():
-        script_path.write_text(script_source, encoding="utf-8")
+        _ = script_path.write_text(script_source, encoding="utf-8")
         script_path.chmod(0o755)
 
     hooks_data = _load_hooks_json(hooks_path)
     _merge_event_entry(hooks_data, event_name, script_path)
-    hooks_path.write_text(
+    _ = hooks_path.write_text(
         json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
@@ -149,7 +149,9 @@ def _merge_event_entry(
     command = f"python3 {shlex.quote(str(script_path))}"
     if _has_llm_wiki_hook(event_value, command):
         return
-    event_value.append({"hooks": [{"type": "command", "command": command, "timeout": 3}]})
+    event_value.append(
+        {"hooks": [{"type": "command", "command": command, "timeout": 3}]}
+    )
 
 
 def uninstall_agent_hooks(
@@ -166,15 +168,20 @@ def uninstall_agent_hooks(
 
     hooks_path = config_dir / target.hook_config_name
     hooks_dir = config_dir / "hooks"
-    for s_name in (HOOK_SCRIPT_NAME, "llm_wiki_startup.py", "llm_wiki_stop.py", "llm_wiki_guardrail.py"):
+    for s_name in (
+        HOOK_SCRIPT_NAME,
+        "llm_wiki_startup.py",
+        "llm_wiki_stop.py",
+        "llm_wiki_guardrail.py",
+    ):
         sp = hooks_dir / s_name
         if sp.exists():
             sp.unlink()
 
     if hooks_path.exists():
         hooks_data = _load_hooks_json(hooks_path)
-        _remove_hook(hooks_data, target, config_dir)
-        hooks_path.write_text(
+        _remove_hook(hooks_data)
+        _ = hooks_path.write_text(
             json.dumps(hooks_data, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
@@ -184,36 +191,43 @@ def uninstall_agent_hooks(
     if global_config_dir != config_dir:
         global_hooks_path = global_config_dir / target.hook_config_name
         global_hooks_dir = global_config_dir / "hooks"
-        for s_name in (HOOK_SCRIPT_NAME, "llm_wiki_startup.py", "llm_wiki_stop.py", "llm_wiki_guardrail.py"):
+        for s_name in (
+            HOOK_SCRIPT_NAME,
+            "llm_wiki_startup.py",
+            "llm_wiki_stop.py",
+            "llm_wiki_guardrail.py",
+        ):
             sp = global_hooks_dir / s_name
             if sp.exists():
                 sp.unlink()
         if global_hooks_path.exists():
             global_data = _load_hooks_json(global_hooks_path)
-            _remove_hook(global_data, target, global_config_dir)
-            global_hooks_path.write_text(
+            _remove_hook(global_data)
+            _ = global_hooks_path.write_text(
                 json.dumps(global_data, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
     return True
 
 
-def _remove_hook(
-    hooks_data: dict[str, JsonValue],
-    target: AgentTarget,
-    script_path: Path,
-) -> None:
+def _remove_hook(hooks_data: dict[str, JsonValue]) -> None:
+    """Strip every LLM Wiki hook entry from a parsed hooks configuration."""
     hooks_value = hooks_data.get("hooks")
     if not isinstance(hooks_value, dict):
         return
 
-    wiki_scripts = ("llm_wiki_user_prompt.py", "llm_wiki_startup.py", "llm_wiki_stop.py", "llm_wiki_guardrail.py")
+    wiki_scripts = (
+        "llm_wiki_user_prompt.py",
+        "llm_wiki_startup.py",
+        "llm_wiki_stop.py",
+        "llm_wiki_guardrail.py",
+    )
 
     for event_name, event_value in list(hooks_value.items()):
         if not isinstance(event_value, list):
             continue
 
-        new_event_value = []
+        new_event_value: list[JsonValue] = []
         for group in event_value:
             if not isinstance(group, dict):
                 new_event_value.append(group)
@@ -223,8 +237,12 @@ def _remove_hook(
                 new_event_value.append(group)
                 continue
             filtered_hooks = [
-                h for h in hooks
-                if not (isinstance(h, dict) and any(s in str(h.get("command", "")) for s in wiki_scripts))
+                h
+                for h in hooks
+                if not (
+                    isinstance(h, dict)
+                    and any(s in str(h.get("command", "")) for s in wiki_scripts)
+                )
             ]
             if filtered_hooks:
                 group["hooks"] = filtered_hooks

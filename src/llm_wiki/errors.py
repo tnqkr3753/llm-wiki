@@ -48,6 +48,16 @@ class DocumentNotFoundError(WikiError):
 
 
 @dataclass(frozen=True, slots=True)
+class GitRepositoryError(WikiError):
+    """Raised when a Git repository is required but absent."""
+
+    @classmethod
+    def missing(cls, path: Path) -> "GitRepositoryError":
+        """Build an error for a directory that is not a Git repository."""
+        return cls(f"Not a git repository: {path}")
+
+
+@dataclass(frozen=True, slots=True)
 class ConfigReadError(WikiError):
     """Raised when an LLM Wiki config exists but cannot be used."""
 

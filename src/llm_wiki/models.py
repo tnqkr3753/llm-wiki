@@ -28,6 +28,23 @@ class StoredDocument:
 
 
 @dataclass(frozen=True, slots=True)
+class ReindexFailure:
+    """One document that could not be indexed during a directory reindex."""
+
+    path: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReindexResult:
+    """Outcome of reindexing every Markdown file under one root."""
+
+    indexed: int
+    removed: int
+    failures: tuple[ReindexFailure, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SearchResult:
     """A ranked result from the full-text index."""
 

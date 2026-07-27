@@ -1,5 +1,6 @@
 """Typer command surface for LLM Wiki."""
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated
 
@@ -13,21 +14,21 @@ from llm_wiki.agent_hooks import (
     uninstall_agent_hooks,
 )
 from llm_wiki.agent_skills import (
+    SkillInstallResult,
     SkillLanguage,
     install_agent_skills,
     uninstall_agent_skills,
 )
 from llm_wiki.agents import CLAUDE_TARGET, CODEX_TARGET, GEMINI_TARGET, AgentTarget
 from llm_wiki.config import resolve_db_path
+from llm_wiki.doctor import run_doctor
 from llm_wiki.errors import WikiError
+from llm_wiki.git_hook import install_git_hook
+from llm_wiki.hook_stats import show_hook_stats
 from llm_wiki.init_project import InitResult, initialize_global, initialize_project
 from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import DocumentId
-from llm_wiki.store import get_document, search, upsert_document
-
-from llm_wiki.doctor import run_doctor
-from llm_wiki.git_hook import install_git_hook
-from llm_wiki.hook_stats import show_hook_stats
+from llm_wiki.store import get_document, reindex_directory, search, upsert_document
 from llm_wiki.watcher import run_watcher
 
 DEFAULT_LIMIT = 5
@@ -149,6 +150,32 @@ def _print_init_result(result: InitResult) -> None:
         console.print(f"agents: {result.agents_path}")
 
 
+def _print_skill_installs(
+    target: AgentTarget,
+    results: Sequence[SkillInstallResult],
+) -> None:
+    for result in results:
+        if result.installed:
+            console.print(
+                f"[green]✓[/green] installed {target.display_name} "
+                f"skill: {result.skill_path}",
+            )
+        else:
+            console.print(
+                f"{target.display_name} skill already exists: {result.skill_path}",
+            )
+
+
+def _print_skill_removals(target: AgentTarget, removed: Sequence[Path]) -> None:
+    if not removed:
+        console.print(f"No {target.display_name} skills found to uninstall.")
+        return
+    for item in removed:
+        console.print(
+            f"[green]✓[/green] uninstalled {target.display_name} skill: {item}"
+        )
+
+
 def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> None:
     def install_skill_command(
         path: ProjectPathOption = None,
@@ -156,7 +183,14 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
         tool_path: ToolPathOption = None,
         language: LanguageOption = SkillLanguage.AUTO,
         force: SkillForceOption = False,
-        is_global: Annotated[bool, typer.Option("-g", "--global", help="Install global agent skills into home directory.")] = False,
+        is_global: Annotated[
+            bool,
+            typer.Option(
+                "-g",
+                "--global",
+                help="Install global agent skills into home directory.",
+            ),
+        ] = False,
     ) -> None:
         project_path = None if (is_global or path is None) else path
         results = install_agent_skills(
@@ -167,20 +201,19 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
             force=force,
             language=language,
         )
-        for result in results:
-            if result.installed:
-                console.print(
-                    f"[green]✓[/green] installed {target.display_name} skill: {result.skill_path}",
-                )
-            else:
-                console.print(
-                    f"{target.display_name} skill already exists: {result.skill_path}",
-                )
+        _print_skill_installs(target, results)
 
     def uninstall_skill_command(
         path: ProjectPathOption = None,
         skills_dir: SkillsDirOption = None,
-        is_global: Annotated[bool, typer.Option("-g", "--global", help="Uninstall global agent skills from home directory.")] = False,
+        is_global: Annotated[
+            bool,
+            typer.Option(
+                "-g",
+                "--global",
+                help="Uninstall global agent skills from home directory.",
+            ),
+        ] = False,
     ) -> None:
         project_path = None if (is_global or path is None) else path
         removed = uninstall_agent_skills(
@@ -189,17 +222,22 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
             project_path=project_path,
             is_global=is_global,
         )
-        if removed:
-            for item in removed:
-                console.print(f"[green]✓[/green] uninstalled {target.display_name} skill: {item}")
-        else:
-            console.print(f"No {target.display_name} skills found to uninstall.")
+        _print_skill_removals(target, removed)
 
     def install_hooks_command(
         path: ProjectPathOption = None,
         tool_path: ToolPathOption = None,
         force: HookForceOption = False,
-        auto_prompt: Annotated[bool, typer.Option("--auto-prompt", help="Also auto-inject wiki context on every user prompt (higher token usage).")] = False,
+        auto_prompt: Annotated[
+            bool,
+            typer.Option(
+                "--auto-prompt",
+                help=(
+                    "Also auto-inject wiki context on every user prompt "
+                    "(higher token usage)."
+                ),
+            ),
+        ] = False,
     ) -> None:
         project_path = Path.cwd() if path is None else path
         result = install_agent_hooks(
@@ -209,40 +247,61 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
             force=force,
             include_prompt_auto_inject=auto_prompt,
         )
-        console.print(f"[green]✓[/green] installed complete smart hook suite for {target.display_name}: {result.hooks_path}")
+        console.print(
+            f"[green]✓[/green] installed complete smart hook suite for "
+            f"{target.display_name}: {result.hooks_path}"
+        )
         console.print("  - SessionStart awareness hook (~15 tokens once at startup)")
         console.print("  - PreToolUse guardrail hook for sensitive file edits")
 
     def uninstall_hooks_command(
         path: ProjectPathOption = None,
-        is_global: Annotated[bool, typer.Option("-g", "--global", help="Uninstall global agent hooks.")] = False,
+        is_global: Annotated[
+            bool, typer.Option("-g", "--global", help="Uninstall global agent hooks.")
+        ] = False,
     ) -> None:
         project_path = Path.cwd() if path is None else path
-        uninstall_agent_hooks(target=target, project_path=project_path, is_global=is_global)
+        _ = uninstall_agent_hooks(
+            target=target, project_path=project_path, is_global=is_global
+        )
         loc_str = "global home" if is_global else str(project_path)
-        console.print(f"[green]✓[/green] uninstalled {target.display_name} hooks ({loc_str})")
+        console.print(
+            f"[green]✓[/green] uninstalled {target.display_name} hooks ({loc_str})"
+        )
 
     def install_startup_hook_command(
         path: ProjectPathOption = None,
     ) -> None:
         project_path = Path.cwd() if path is None else path
         result = install_startup_hook(target=target, project_path=project_path)
-        console.print(f"[green]✓[/green] installed lightweight SessionStart awareness hook for {target.display_name}: {result.hooks_path}")
+        console.print(
+            f"[green]✓[/green] installed lightweight SessionStart awareness hook "
+            f"for {target.display_name}: {result.hooks_path}"
+        )
 
     def install_guardrail_hook_command(
         path: ProjectPathOption = None,
     ) -> None:
         project_path = Path.cwd() if path is None else path
         result = install_guardrail_hook(target=target, project_path=project_path)
-        console.print(f"[green]✓[/green] installed selective PreToolUse guardrail hook for {target.display_name}: {result.hooks_path}")
+        console.print(
+            f"[green]✓[/green] installed selective PreToolUse guardrail hook "
+            f"for {target.display_name}: {result.hooks_path}"
+        )
 
     _ = agent_app.command(
         "install-skill",
-        help=f"Install the LLM Wiki {target.display_name} skills (globally or for a project).",
+        help=(
+            f"Install the LLM Wiki {target.display_name} skills "
+            "(globally or for a project)."
+        ),
     )(install_skill_command)
     _ = agent_app.command(
         "uninstall-skill",
-        help=f"Uninstall the LLM Wiki {target.display_name} skills (globally or from a project).",
+        help=(
+            f"Uninstall the LLM Wiki {target.display_name} skills "
+            "(globally or from a project)."
+        ),
     )(uninstall_skill_command)
     _ = agent_app.command(
         "install-hooks",
@@ -250,11 +309,14 @@ def _register_install_commands(agent_app: typer.Typer, target: AgentTarget) -> N
     )(install_hooks_command)
     _ = agent_app.command(
         "install-startup-hook",
-        help=f"Install lightweight SessionStart awareness hook (~15 tokens once at startup).",
+        help=(
+            "Install lightweight SessionStart awareness hook "
+            "(~15 tokens once at startup)."
+        ),
     )(install_startup_hook_command)
     _ = agent_app.command(
         "install-guardrail-hook",
-        help=f"Install selective PreToolUse guardrail hook for sensitive file edits.",
+        help="Install selective PreToolUse guardrail hook for sensitive file edits.",
     )(install_guardrail_hook_command)
     _ = agent_app.command(
         "uninstall-hooks",
@@ -281,6 +343,30 @@ def add(
         raise typer.Exit(1) from exc
 
     console.print(f"indexed {int(document_id)} {document.title} {document.path}")
+
+
+@app.command("reindex")
+def reindex(
+    path: ProjectPathOption = None,
+    db: DbOption = None,
+) -> None:
+    """Reindex every Markdown document under a project directory."""
+    root = (path or Path.cwd()).expanduser().resolve()
+    if not root.is_dir():
+        console.print(f"Error: Not a directory: {root}")
+        raise typer.Exit(1)
+
+    try:
+        result = reindex_directory(resolve_db_path(db), root)
+    except WikiError as exc:
+        console.print(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(f"indexed {result.indexed} removed {result.removed}")
+    for failure in result.failures:
+        console.print(f"failed {failure.path} | {failure.reason}")
+    if len(result.failures) > 0:
+        raise typer.Exit(1)
 
 
 def _print_search_results(query: str, db: Path | None, limit: int) -> None:
@@ -335,7 +421,9 @@ def ask_context(
     query: Annotated[str, typer.Argument(help="Question or retrieval query.")],
     db: DbOption = None,
     limit: LimitOption = 3,
-    min_score: Annotated[float, typer.Option(help="Minimum BM25 score threshold.")] = 0.0,
+    min_score: Annotated[
+        float, typer.Option(help="Minimum BM25 score threshold.")
+    ] = 0.0,
 ) -> None:
     """Print grounded snippets to paste into an LLM prompt."""
     try:
@@ -379,11 +467,13 @@ def watch(
 @git_hook_app.command("install")
 def git_hook_install(
     path: ProjectPathOption = None,
-    force: Annotated[bool, typer.Option("--force", help="Overwrite existing post-commit hook.")] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Overwrite existing post-commit hook.")
+    ] = False,
 ) -> None:
     """Install a Git post-commit hook that automatically reindexes LLM Wiki."""
     try:
-        install_git_hook(path, force=force)
-    except ValueError as exc:
+        _ = install_git_hook(path, force=force)
+    except WikiError as exc:
         console.print(f"Error: {exc}")
         raise typer.Exit(1) from exc

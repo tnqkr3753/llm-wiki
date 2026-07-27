@@ -580,7 +580,9 @@ def test_claude_install_hooks_writes_user_prompt_hook(tmp_path: Path) -> None:
     script_text = script_path.read_text(encoding="utf-8")
     hook_entry = settings_data["hooks"]["UserPromptSubmit"][0]["hooks"][0]
     assert install_result.exit_code == 0
-    assert "installed complete smart hook suite for Claude Code" in install_result.output
+    assert (
+        "installed complete smart hook suite for Claude Code" in install_result.output
+    )
     assert script_path.is_file()
     assert str(script_path) in hook_entry["command"]
     assert hook_entry["timeout"] == 5
@@ -725,11 +727,15 @@ def test_project_skill_install_and_uninstall(tmp_path: Path) -> None:
     project_path = tmp_path / "project"
     project_path.mkdir()
 
-    install_res = runner.invoke(app, ["codex", "install-skill", "-p", str(project_path)])
+    install_res = runner.invoke(
+        app, ["codex", "install-skill", "-p", str(project_path)]
+    )
     skill_file = project_path / ".codex" / "skills" / "llm-wiki-recall" / "SKILL.md"
     assert install_res.exit_code == 0
     assert skill_file.is_file()
 
-    uninstall_res = runner.invoke(app, ["codex", "uninstall-skill", "-p", str(project_path)])
+    uninstall_res = runner.invoke(
+        app, ["codex", "uninstall-skill", "-p", str(project_path)]
+    )
     assert uninstall_res.exit_code == 0
     assert not skill_file.is_file()

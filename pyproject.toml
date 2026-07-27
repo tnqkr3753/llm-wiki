@@ -36,6 +36,20 @@ reportUnusedVariable = "error"
 reportMissingParameterType = "error"
 reportPrivateUsage = "error"
 reportAny = "none"
+# Wrapping console messages inside parentheses is how they stay under
+# ruff's 88-column limit, and ruff already allows ISC001.
+reportImplicitStringConcatenation = "none"
+
+# Tests assert on behavior, not on the types of discarded call results or of
+# JSON payloads they construct themselves.
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+reportUnusedCallResult = "none"
+reportUnknownVariableType = "none"
+reportUnknownParameterType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownMemberType = "none"
+reportMissingTypeArgument = "none"
 
 [tool.ruff]
 target-version = "py313"
@@ -55,17 +69,26 @@ ignore = [
     "TD002",
     "TD003",
     "FIX002",
+    # Typer maps one CLI option to one parameter, so command signatures are wide.
+    "PLR0913",
 ]
 fixable = ["ALL"]
 unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
+# Hook scripts are emitted verbatim as string templates; wrapping them would
+# change the generated file rather than this module's readability.
+"src/llm_wiki/hook_templates.py" = ["E501"]
 "tests/**/*.py" = [
     "S101",
     "ARG",
     "PLR2004",
     "SLF001",
     "D",
+    # Integration tests intentionally run the installed CLI in a subprocess.
+    "S603",
+    "PLW1510",
+    "PLC0415",
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -98,6 +121,7 @@ source = ["src"]
 branch = true
 
 [tool.coverage.report]
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

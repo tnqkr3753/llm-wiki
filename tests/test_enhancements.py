@@ -1,16 +1,11 @@
 """Tests for the 5 new LLM-Wiki enhancements."""
 
-import json
-import subprocess
-import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 from llm_wiki.cli import app
-from llm_wiki.doctor import check_fts5_trigram_support, run_doctor
 from llm_wiki.git_hook import install_git_hook
-from llm_wiki.hook_stats import show_hook_stats
 from llm_wiki.models import ParsedDocument
 from llm_wiki.store import search, upsert_document
 
@@ -21,7 +16,9 @@ def test_doctor_command(tmp_path: Path) -> None:
     project_dir = tmp_path / "project"
     project_dir.mkdir()
     (project_dir / ".llm-wiki").mkdir()
-    (project_dir / ".llm-wiki" / "config.toml").write_text("docs_dir = 'docs'", encoding="utf-8")
+    (project_dir / ".llm-wiki" / "config.toml").write_text(
+        "docs_dir = 'docs'", encoding="utf-8"
+    )
 
     result = runner.invoke(app, ["doctor", "-p", str(project_dir)])
     assert result.exit_code == 0

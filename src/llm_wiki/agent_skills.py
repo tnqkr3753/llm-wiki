@@ -34,7 +34,7 @@ def install_agent_skills(
     force: bool = True,
     language: SkillLanguage = SkillLanguage.AUTO,
 ) -> tuple[SkillInstallResult, ...]:
-    """Install LLM Wiki skills globally, into a project, or into a specific skills dir."""
+    """Install LLM Wiki skills globally, into a project, or into a skills dir."""
     resolved_skills_dir = _resolve_skills_dir(target, skills_dir, project_path)
     resolved_tool_path = TOOL_REPO_PATH if tool_path is None else tool_path
     resolved_language = _resolve_language(language)
@@ -83,7 +83,7 @@ def uninstall_agent_skills(
     project_path: Path | None = None,
     is_global: bool = False,
 ) -> tuple[Path, ...]:
-    """Uninstall LLM Wiki skills from global home, a project, or a specific skills dir."""
+    """Uninstall LLM Wiki skills from global home, a project, or a skills dir."""
     if is_global:
         resolved_dir = target.default_skills_dir.expanduser().resolve()
     else:
@@ -109,7 +109,7 @@ def _resolve_skills_dir(
     if skills_dir is not None:
         return skills_dir.expanduser().resolve()
     if project_path is not None:
-        return (project_path.expanduser().resolve() / target.hook_dir_name / "skills")
+        return project_path.expanduser().resolve() / target.hook_dir_name / "skills"
     return target.default_skills_dir.expanduser().resolve()
 
 

@@ -13,9 +13,9 @@ from llm_wiki.agents import AgentTarget
 
 __all__ = [
     "context_output_source",
-    "startup_script",
     "guardrail_script",
     "prompt_hook_script",
+    "startup_script",
 ]
 
 

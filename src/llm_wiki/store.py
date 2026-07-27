@@ -2,16 +2,27 @@
 
 import re
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import closing
 from pathlib import Path
+from typing import Final
 
-from llm_wiki.errors import DocumentNotFoundError, SqlColumnTypeError
+from llm_wiki.errors import DocumentNotFoundError, SqlColumnTypeError, WikiError
 from llm_wiki.markdown import parse_markdown_file
-from llm_wiki.models import DocumentId, ParsedDocument, SearchResult, StoredDocument
+from llm_wiki.models import (
+    DocumentId,
+    ParsedDocument,
+    ReindexFailure,
+    ReindexResult,
+    SearchResult,
+    StoredDocument,
+)
 
 type SqlValue = str | int | float | bytes | None
 type SqlRow = Sequence[SqlValue]
+
+EXCLUDED_DIR_NAMES: Final = frozenset({"venv", "node_modules", "__pycache__"})
+BM25_COLUMN_INDEX: Final = 5
 
 
 SCHEMA = """
@@ -156,12 +167,17 @@ def search(
             (fts_query, limit),
         )
 
-    results = []
-    for row in rows:
-        bm25_score = float(row[5]) if len(row) > 5 and row[5] is not None else 0.0
-        if bm25_score >= min_score:
-            results.append(_result_from_row(row))
-    return results
+    return [_result_from_row(row) for row in rows if _row_bm25_score(row) >= min_score]
+
+
+def _row_bm25_score(row: SqlRow) -> float:
+    """Read the BM25 score column, treating a missing score as neutral."""
+    if len(row) <= BM25_COLUMN_INDEX:
+        return 0.0
+    value = row[BM25_COLUMN_INDEX]
+    if not isinstance(value, (int, float)):
+        return 0.0
+    return float(value)
 
 
 def get_document(db_path: Path, document_id: DocumentId) -> StoredDocument:
@@ -261,16 +277,72 @@ def _document_from_row(row: SqlRow) -> StoredDocument:
     )
 
 
-def reindex_directory(db_path: Path, root_path: Path) -> int:
-    """Reindex all markdown files in root_path into db_path."""
+def reindex_directory(db_path: Path, root_path: Path) -> ReindexResult:
+    """Reindex every Markdown file under root_path and drop deleted ones."""
+    root = root_path.expanduser().resolve()
     indexed = 0
-    for file_path in root_path.rglob("*.md"):
-        if any(part.startswith(".") or part in ("venv", "node_modules", "__pycache__") for part in file_path.parts):
-            continue
+    failures: list[ReindexFailure] = []
+    for file_path in iter_markdown_files(root):
         try:
-            doc = parse_markdown_file(file_path)
-            upsert_document(db_path, doc)
-            indexed += 1
-        except Exception:
-            pass
-    return indexed
+            document = parse_markdown_file(file_path)
+        except WikiError as exc:
+            failures.append(ReindexFailure(path=str(file_path), reason=str(exc)))
+            continue
+        _ = upsert_document(db_path, document)
+        indexed += 1
+
+    removed = _remove_missing_documents(db_path, root)
+    return ReindexResult(indexed=indexed, removed=removed, failures=tuple(failures))
+
+
+def iter_markdown_files(root_path: Path) -> Iterator[Path]:
+    """Yield every indexable Markdown file under root_path in stable order."""
+    root = root_path.expanduser().resolve()
+    for file_path in sorted(root.rglob("*.md")):
+        if not _is_excluded(file_path, root):
+            yield file_path
+
+
+def _is_excluded(file_path: Path, root: Path) -> bool:
+    """Report whether a file sits in a hidden or vendored directory."""
+    relative_parts = file_path.relative_to(root).parts
+    return any(
+        part.startswith(".") or part in EXCLUDED_DIR_NAMES for part in relative_parts
+    )
+
+
+def _remove_missing_documents(db_path: Path, root: Path) -> int:
+    """Delete indexed documents under root whose source file no longer exists."""
+    initialize(db_path)
+    with closing(sqlite3.connect(db_path)) as connection:
+        rows = _fetch_all(connection, "SELECT id, path FROM documents", ())
+        stale_ids = [
+            _row_int(row, 0)
+            for row in rows
+            if _is_stale_document(_row_str(row, 1), root)
+        ]
+        for document_id in stale_ids:
+            # Delete from the FTS index first: the external content row must
+            # still hold the old values for FTS5 to unindex them correctly.
+            _ = connection.execute(
+                "DELETE FROM documents_fts WHERE rowid = ?",
+                (document_id,),
+            )
+            _ = connection.execute(
+                "DELETE FROM documents WHERE id = ?",
+                (document_id,),
+            )
+        connection.commit()
+    return len(stale_ids)
+
+
+def _is_stale_document(stored_path: str, root: Path) -> bool:
+    """Report whether a stored path belongs to root but is gone from disk.
+
+    Relative stored paths are never treated as stale: they were indexed
+    against an unknown working directory, so their absence cannot be proven.
+    """
+    path = Path(stored_path)
+    if not path.is_absolute() or not path.is_relative_to(root):
+        return False
+    return not path.is_file()

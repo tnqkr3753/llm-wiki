@@ -18,7 +18,7 @@ def parse_markdown_file(path: Path) -> ParsedDocument:
 
     try:
         raw = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise DocumentReadError.unreadable(path) from exc
 
     title, tags, body = _split_frontmatter(raw, path)
