@@ -14,6 +14,7 @@ class ParsedDocument:
     title: str
     tags: tuple[str, ...]
     body: str
+    links: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +54,15 @@ class ReindexResult:
     indexed: int
     removed: int
     failures: tuple[ReindexFailure, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentLink:
+    """One indexed document reached from or pointing to another document."""
+
+    id: DocumentId
+    path: str
+    title: str
 
 
 @dataclass(frozen=True, slots=True)

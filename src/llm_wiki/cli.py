@@ -29,7 +29,9 @@ from llm_wiki.init_project import InitResult, initialize_global, initialize_proj
 from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import DocumentId
 from llm_wiki.store import (
+    backlinks,
     get_document,
+    outgoing_links,
     record_retrieval,
     reindex_directory,
     search,
@@ -422,6 +424,30 @@ def show(
     console.print(f"tags: {tag_text}")
     console.print("")
     console.print(document.body)
+
+
+@app.command("links")
+def links(
+    document_id: Annotated[int, typer.Argument(help="Stored document id.")],
+    db: DbOption = None,
+) -> None:
+    """Show outgoing wikilinks and backlinks for a document."""
+    db_path = resolve_db_path(db)
+    try:
+        document = get_document(db_path, DocumentId(document_id))
+        outgoing = outgoing_links(db_path, DocumentId(document_id))
+        incoming = backlinks(db_path, DocumentId(document_id))
+    except WikiError as exc:
+        console.print(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(f"# {document.title}")
+    console.print(f"→ outgoing ({len(outgoing)}):")
+    for link in outgoing:
+        console.print(f"  [{int(link.id)}] {link.title} | {link.path}")
+    console.print(f"← backlinks ({len(incoming)}):")
+    for link in incoming:
+        console.print(f"  [{int(link.id)}] {link.title} | {link.path}")
 
 
 @app.command("ask-context")
