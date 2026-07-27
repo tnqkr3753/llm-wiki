@@ -21,6 +21,8 @@ Use this page as the entry point for durable project knowledge.
 - [[example]] — architecture guide: how approved knowledge is stored and indexed.
 - [[runbooks/obsidian-usage]] — open this folder in Obsidian, use the graph
   view, and the conventions for adding new pages.
+- [[runbooks/migrate-to-global-wiki]] — move per-project wikis into the single
+  global wiki, scoped by `project:` tags.
 - [[references/knowledge-graph]] — how wikilinks, the link table, resolution,
   and backlinks work under the hood.
 - [[decisions/single-global-wiki-tag-scope]] — one global wiki, scoped by

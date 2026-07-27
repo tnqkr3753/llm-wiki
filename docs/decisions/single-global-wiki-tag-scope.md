@@ -52,3 +52,6 @@ scoped only when you ask.
 Per-project databases still work through `--db` / project `.llm-wiki/config.toml`
 for anyone who needs hard isolation (e.g. a client repo that must never share an
 index). They are simply no longer the default path.
+
+Existing per-project users can move to this model with the
+[[runbooks/migrate-to-global-wiki]] runbook.
