@@ -234,7 +234,19 @@ def _retrieved_counts(db_path: Path, document_ids: list[int]) -> dict[int, int]:
             """,  # noqa: S608 - placeholders are generated, never user input
             tuple(document_ids),
         )
-    return {_row_int(row, 0): _row_int(row, 1) for row in rows}
+    return {_row_int(row, 0): _coerce_count(row[1]) for row in rows}
+
+
+def _coerce_count(value: SqlValue) -> int:
+    """Read a retrieved-count defensively: a corrupt or negative value is 0.
+
+    The count is advisory ranking input, never a correctness invariant, so a
+    row corrupted outside the CLI must degrade to neutral rather than crash
+    ``usage`` or usage-weighted ``ask-context``.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(0, value)
 
 
 def record_retrieval(
@@ -292,7 +304,7 @@ def _usage_from_row(row: SqlRow) -> DocumentUsage:
         id=DocumentId(_row_int(row, 0)),
         path=_row_str(row, 1),
         title=_row_str(row, 2),
-        retrieved_count=_row_int(row, 3),
+        retrieved_count=_coerce_count(row[3]),
         last_retrieved_at=last_retrieved if isinstance(last_retrieved, str) else None,
     )
 
@@ -479,6 +491,12 @@ def _remove_missing_documents(db_path: Path, root: Path) -> int:
                 "DELETE FROM document_usage WHERE document_id = ?",
                 (document_id,),
             )
+        # Prune any usage row whose document is gone, however it was orphaned,
+        # so stale counts cannot accumulate or skew usage-weighted ranking.
+        _ = connection.execute(
+            "DELETE FROM document_usage WHERE document_id NOT IN "
+            "(SELECT id FROM documents)"
+        )
         connection.commit()
     return len(stale_ids)
 

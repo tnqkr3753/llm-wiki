@@ -1,5 +1,7 @@
 """Tests for retrieval usage tracking and usage-weighted ranking."""
 
+import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -140,3 +142,63 @@ def test_usage_command_lists_never_retrieved_documents(tmp_path: Path) -> None:
     assert "Used" in result.output
     assert "Unused" in result.output
     assert "never retrieved: 1" in result.output
+
+
+def test_usage_report_survives_a_corrupted_retrieved_count(tmp_path: Path) -> None:
+    """A non-integer count must be reported as 0, not crash the command."""
+    db_path = tmp_path / "wiki.db"
+    document_id = _index(db_path, "/docs/a.md", "Alpha", "shared body")
+    with closing(sqlite3.connect(db_path)) as conn:
+        _ = conn.execute(
+            "INSERT INTO document_usage "
+            "(document_id, retrieved_count, last_retrieved_at) VALUES (?, ?, NULL)",
+            (int(document_id), "corrupt"),
+        )
+        conn.commit()
+
+    report = usage_report(db_path)
+
+    assert report[0].retrieved_count == 0
+
+
+def test_ask_context_survives_a_corrupted_retrieved_count(tmp_path: Path) -> None:
+    """Usage-weighted ranking must not crash on a corrupted count."""
+    db_path = tmp_path / "wiki.db"
+    document_id = _index(db_path, "/docs/a.md", "Alpha", "grounded knowledge")
+    with closing(sqlite3.connect(db_path)) as conn:
+        _ = conn.execute(
+            "INSERT INTO document_usage "
+            "(document_id, retrieved_count, last_retrieved_at) VALUES (?, ?, NULL)",
+            (int(document_id), "corrupt"),
+        )
+        conn.commit()
+
+    result = runner.invoke(
+        app, ["ask-context", "grounded", "--db", str(db_path), "--usage-weight", "0.5"]
+    )
+
+    assert result.exit_code == 0
+    assert "Alpha" in result.output
+
+
+def test_reindex_prunes_orphan_usage_rows(tmp_path: Path) -> None:
+    """Usage rows with no surviving document must be cleaned up on reindex."""
+    db_path = tmp_path / "wiki.db"
+    project_dir = tmp_path / "project"
+    doc = project_dir / "docs" / "a.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text("---\ntitle: Alpha\n---\n\nbody\n", encoding="utf-8")
+    _ = reindex_directory(db_path, project_dir)
+    with closing(sqlite3.connect(db_path)) as conn:
+        _ = conn.execute(
+            "INSERT INTO document_usage (document_id, retrieved_count) VALUES (9999, 5)"
+        )
+        conn.commit()
+
+    _ = reindex_directory(db_path, project_dir)
+
+    with closing(sqlite3.connect(db_path)) as conn:
+        orphans = conn.execute(
+            "SELECT COUNT(*) FROM document_usage WHERE document_id = 9999"
+        ).fetchone()[0]
+    assert orphans == 0
