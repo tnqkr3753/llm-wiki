@@ -144,10 +144,23 @@ def project_init(
             help="Write AGENTS.md instructions for Codex integration.",
         ),
     ] = False,
+    isolated: Annotated[
+        bool,
+        typer.Option(
+            "--isolated",
+            help="Keep a project-local wiki DB instead of the global wiki.",
+        ),
+    ] = False,
+    home: HomeOption = None,
 ) -> None:
-    """Initialize an LLM Wiki layout for a project."""
+    """Initialize an LLM Wiki layout for a project (global wiki by default)."""
     project_path = Path.cwd() if path is None else path
-    result = initialize_project(project_path, include_agents=agents)
+    result = initialize_project(
+        project_path,
+        include_agents=agents,
+        isolated=isolated,
+        home_path=home,
+    )
     _print_init_result(result)
 
 

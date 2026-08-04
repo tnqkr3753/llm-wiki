@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from llm_wiki.config import find_project_config, resolve_db_path, resolve_home_path
+from llm_wiki.config import (
+    find_project_config,
+    resolve_db_path,
+    resolve_home_path,
+    resolve_project_config,
+    resolve_project_tag,
+)
 from llm_wiki.errors import ConfigReadError
 
 
@@ -102,3 +108,85 @@ def test_reports_invalid_project_config_syntax(
 
 def test_explicit_home_expands_the_user_directory() -> None:
     assert resolve_home_path(Path("~/custom-wiki")).is_absolute()
+
+
+def test_global_mode_project_config_uses_global_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    (home).mkdir()
+    (project / ".llm-wiki").mkdir(parents=True)
+    (home / "config.toml").write_text('db_path = "wiki.db"\n', encoding="utf-8")
+    (project / ".llm-wiki" / "config.toml").write_text(
+        'mode = "global"\nproject_tag = "project:demo"\ndocs_dir = "docs"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    monkeypatch.setenv("LLM_WIKI_HOME", str(home))
+
+    assert resolve_db_path(None, project) == home / "wiki.db"
+    assert resolve_project_tag(project) == "project:demo"
+
+
+def test_legacy_db_path_without_mode_stays_isolated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    project = tmp_path / "project"
+    (project / ".llm-wiki").mkdir(parents=True)
+    (project / ".llm-wiki" / "config.toml").write_text(
+        'docs_dir = "docs"\ndb_path = ".llm-wiki/wiki.db"\n',
+        encoding="utf-8",
+    )
+
+    assert resolve_db_path(None, project) == project / ".llm-wiki" / "wiki.db"
+
+
+def test_global_mode_ignores_retained_legacy_db_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    project = tmp_path / "project"
+    _write_project_config(
+        project,
+        'mode = "global"\nproject_tag = "project:demo"\n'
+        'docs_dir = "docs"\ndb_path = ".llm-wiki/wiki.db"\n',
+    )
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    monkeypatch.setenv("LLM_WIKI_HOME", str(home))
+
+    assert resolve_db_path(None, project) == home / "wiki.db"
+
+
+def test_isolated_mode_without_db_path_is_rejected(tmp_path: Path) -> None:
+    _write_project_config(tmp_path, 'mode = "isolated"\ndocs_dir = "docs"\n')
+
+    with pytest.raises(ConfigReadError):
+        _ = resolve_project_config(tmp_path)
+
+
+def test_unknown_mode_is_rejected(tmp_path: Path) -> None:
+    _write_project_config(tmp_path, 'mode = "hybrid"\n')
+
+    with pytest.raises(ConfigReadError):
+        _ = resolve_project_config(tmp_path)
+
+
+def test_malformed_project_tag_is_rejected(tmp_path: Path) -> None:
+    _write_project_config(
+        tmp_path,
+        'mode = "global"\nproject_tag = "Demo Project"\n',
+    )
+
+    with pytest.raises(ConfigReadError):
+        _ = resolve_project_tag(tmp_path)
+
+
+def test_project_without_config_has_no_project_tag(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    assert resolve_project_config(empty) is None
+    assert resolve_project_tag(empty) is None

@@ -232,7 +232,9 @@ def test_ask_context_returns_grounded_snippets(tmp_path: Path) -> None:
 def test_project_init_creates_project_wiki_layout(tmp_path: Path) -> None:
     project_path = tmp_path / "project"
 
-    init_result = runner.invoke(app, ["project", "init", "-p", str(project_path)])
+    init_result = runner.invoke(
+        app, ["project", "init", "-p", str(project_path), "--isolated"]
+    )
 
     assert init_result.exit_code == 0
     assert "initialized" in init_result.output
@@ -244,6 +246,52 @@ def test_project_init_creates_project_wiki_layout(tmp_path: Path) -> None:
     assert (project_path / "docs" / "references").is_dir()
 
 
+def test_project_init_defaults_to_global_mode(tmp_path: Path) -> None:
+    project = tmp_path / "demo-project"
+    home = tmp_path / "global-home"
+
+    result = runner.invoke(
+        app,
+        ["project", "init", "-p", str(project), "--home", str(home)],
+    )
+
+    config = (project / ".llm-wiki" / "config.toml").read_text("utf-8")
+    assert result.exit_code == 0
+    assert 'mode = "global"' in config
+    assert 'project_tag = "project:demo-project"' in config
+    assert not (project / ".llm-wiki" / "wiki.db").exists()
+    assert (home / "wiki.db").is_file()
+
+
+def test_project_init_isolated_preserves_local_layout(tmp_path: Path) -> None:
+    project = tmp_path / "private-client"
+
+    result = runner.invoke(app, ["project", "init", "-p", str(project), "--isolated"])
+
+    assert result.exit_code == 0
+    assert (project / ".llm-wiki" / "wiki.db").is_file()
+    assert 'mode = "isolated"' in (project / ".llm-wiki" / "config.toml").read_text(
+        "utf-8"
+    )
+
+
+def test_project_init_keeps_existing_config_untouched(tmp_path: Path) -> None:
+    project = tmp_path / "existing"
+    home = tmp_path / "global-home"
+    (project / ".llm-wiki").mkdir(parents=True)
+    original = 'docs_dir = "docs"\ndb_path = ".llm-wiki/wiki.db"\n'
+    _ = (project / ".llm-wiki" / "config.toml").write_text(original, encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["project", "init", "-p", str(project), "--home", str(home)],
+    )
+
+    assert result.exit_code == 0
+    assert (project / ".llm-wiki" / "config.toml").read_text("utf-8") == original
+    assert "isolated" in result.output
+
+
 def test_project_config_db_path_is_used_by_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -251,7 +299,9 @@ def test_project_config_db_path_is_used_by_default(
     project_path = tmp_path / "project"
     doc_path = project_path / "docs" / "references" / "configured.md"
 
-    init_result = runner.invoke(app, ["project", "init", "-p", str(project_path)])
+    init_result = runner.invoke(
+        app, ["project", "init", "-p", str(project_path), "--isolated"]
+    )
     _ = (project_path / ".llm-wiki" / "config.toml").write_text(
         'docs_dir = "docs"\ndb_path = "custom/wiki.db"\n',
         encoding="utf-8",
@@ -273,7 +323,7 @@ def test_init_agents_writes_codex_instructions(tmp_path: Path) -> None:
 
     init_result = runner.invoke(
         app,
-        ["project", "init", "-p", str(project_path), "--agents"],
+        ["project", "init", "-p", str(project_path), "--agents", "--isolated"],
     )
 
     agents_text = (project_path / "AGENTS.md").read_text(encoding="utf-8")
@@ -298,7 +348,7 @@ def test_init_agents_appends_llm_wiki_section_to_existing_agents(
 
     init_result = runner.invoke(
         app,
-        ["project", "init", "-p", str(project_path), "--agents"],
+        ["project", "init", "-p", str(project_path), "--agents", "--isolated"],
     )
 
     agents_text = agents_path.read_text(encoding="utf-8")
@@ -700,7 +750,9 @@ def test_invalid_project_config_fails_without_global_fallback(
     project_doc_path = project_path / "docs" / "references" / "project.md"
 
     global_init = runner.invoke(app, ["init", "--home", str(home_path)])
-    project_init = runner.invoke(app, ["project", "init", "-p", str(project_path)])
+    project_init = runner.invoke(
+        app, ["project", "init", "-p", str(project_path), "--isolated"]
+    )
     write_doc(global_doc_path, "Global Wiki", "configured fallback target")
     write_doc(project_doc_path, "Project Wiki", "configured project target")
     global_add = runner.invoke(

@@ -71,6 +71,11 @@ class ConfigReadError(WikiError):
         """Build an error for unreadable configuration."""
         return cls(f"Could not read LLM Wiki config: {path}")
 
+    @classmethod
+    def invalid_slug(cls, name: str) -> "ConfigReadError":
+        """Build an error for a directory name with no usable project slug."""
+        return cls(f"Cannot derive a project slug from: {name}")
+
 
 @dataclass(frozen=True, slots=True)
 class SqlColumnTypeError(WikiError):
