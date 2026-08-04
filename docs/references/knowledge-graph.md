@@ -88,7 +88,14 @@ document_links(source_id INTEGER, target TEXT, PRIMARY KEY(source_id, target))
   collect the sources whose target resolves to this document.
 
 Because resolution is shared, the Obsidian graph view and `llm-wiki links`
-always agree on which edges exist.
+always agree on which edges exist — with one asymmetry: the SQLite index can
+hold documents from many roots, but
+Obsidian only sees files inside the opened vault.
+An externally indexed path is a real node for `llm-wiki links` and
+search, yet it never appears in Graph View. Making a document visible in the
+one global graph therefore means physically materializing it under
+`~/.llm-wiki/docs` (see [[runbooks/migrate-to-global-wiki]]), and
+`llm-wiki vault audit` reports any indexed path that lives outside the vault.
 
 ## Why paths are canonical
 

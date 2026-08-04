@@ -77,13 +77,20 @@ uv run --directory {{tool_path}} llm-wiki init
 uv run --directory {{tool_path}} llm-wiki project init -p /path/to/project --agents
 ```
 
-4. Verify the DB, config, docs folders, and any generated AGENTS.md exist.
-5. Confirm AGENTS.md points at the target project `.llm-wiki/wiki.db`.
+   By default this connects the project to the **single global wiki**
+   (`--db ~/.llm-wiki/wiki.db`) and writes `mode = "global"` plus a
+   `project_tag` such as `project:demo-project` into
+   `.llm-wiki/config.toml`. No project-local DB is created.
+
+4. Only when a repo must never share an index, add `--isolated` to keep a
+   project-local `.llm-wiki/wiki.db`.
+5. Verify the config, docs folders, and any generated AGENTS.md exist.
 
 ## Verification
 
-Use `test -f` for generated files and grep AGENTS.md for `llm-wiki ask-context`,
-`llm-wiki add`, and `--db /path/to/project/.llm-wiki/wiki.db`.
+Use `test -f` for generated files and grep AGENTS.md for `llm-wiki ask-context`.
+Global mode instructions name `--db ~/.llm-wiki/wiki.db` and a `--project`
+scope; isolated mode names `--db /path/to/project/.llm-wiki/wiki.db`.
 
 ## Final Response
 
@@ -115,15 +122,18 @@ project has a local wiki.
 
 1. Read the nearest applicable AGENTS.md from the target project.
 2. Find an `llm-wiki ask-context` command and any explicit `--db` path.
-3. If no explicit DB is present, inspect `.llm-wiki/config.toml`, then
-   `LLM_WIKI_DB`, `LLM_WIKI_HOME`, and finally `~/.llm-wiki/wiki.db`.
-4. Run:
+3. The default is the **single global wiki**: `--db ~/.llm-wiki/wiki.db`,
+   scoped by the project tag from `.llm-wiki/config.toml`. Run:
 
 ```bash
-uv run --directory {{tool_path}} llm-wiki ask-context "<question>" \\
-  --db /path/to/project/.llm-wiki/wiki.db
+uv run --directory {{tool_path}} llm-wiki ask-context "how do we deploy?" \\
+  --db ~/.llm-wiki/wiki.db --project demo-project
 ```
 
+   `--project demo-project` returns that project's documents plus
+   global/common documents and excludes other projects.
+4. Only a project whose config says `mode = "isolated"` uses its local DB
+   instead: `--db /path/to/project/.llm-wiki/wiki.db` (no `--project`).
 5. Use returned context before answering or editing.
 
 ## Response Discipline
@@ -154,20 +164,23 @@ repeatable troubleshooting findings.
 Default to the **single global wiki**. It is one connected knowledge graph;
 scope by tags, not by separate databases.
 
-1. Write the document under the global docs root:
-   `~/.llm-wiki/docs/decisions/`, `.../runbooks/`, or `.../references/`
-   (or `$LLM_WIKI_HOME/docs/` when `LLM_WIKI_HOME` is set).
+1. Write the document under the global docs root. Project-specific knowledge
+   goes into that project's namespace, for example
+   `~/.llm-wiki/docs/projects/demo-project/{{{{decisions,runbooks,references}}}}/`;
+   cross-project knowledge goes into `~/.llm-wiki/docs/decisions/`,
+   `.../runbooks/`, or `.../references/` (or `$LLM_WIKI_HOME/docs/` when
+   `LLM_WIKI_HOME` is set).
 
 2. Tag for scope with **YAML list tags** (Obsidian-compatible; the parser also
-   accepts a legacy comma string). Add a `project:<name>` tag when the knowledge
-   is specific to one repo; omit it when it applies to any project:
+   accepts a legacy comma string). Add the project tag when the knowledge is
+   specific to one repo; omit it when it applies to any project:
 
 ```markdown
 ---
 title: Short Clear Title
 tags:
   - decision
-  - project:my-app
+  - project:demo-project
 ---
 ```
 
@@ -187,8 +200,9 @@ uv run --directory {{tool_path}} llm-wiki add \\
    Reindex `index.md` too so the new edges are stored, or just run
    `llm-wiki reindex` over the docs root.
 
-5. Verify: recall with `llm-wiki ask-context "<q>" --tag project:<name>` to
-   confirm the scope filter works, and `llm-wiki links <id>` to confirm the
+5. Verify: recall with
+   `llm-wiki ask-context "<q>" --db ~/.llm-wiki/wiki.db --project demo-project`
+   to confirm the scope filter works, and `llm-wiki links <id>` to confirm the
    graph edges.
 
 Only fall back to a per-project database (`--db /path/.llm-wiki/wiki.db`) when a
@@ -228,23 +242,27 @@ test -f ~/.llm-wiki/config.toml
 
 ## Reindex
 
-Reindex the whole project in one pass. This also drops index entries whose
-Markdown file was deleted or renamed, and it names any file it cannot parse:
+Default to the **single global wiki**: reindex the global docs root in one
+pass. This also drops index entries whose Markdown file was deleted or
+renamed, and it names any file it cannot parse:
 
 ```bash
-uv run --directory {{tool_path}} llm-wiki reindex -p /path/to/project \\
-  --db /path/to/project/.llm-wiki/wiki.db
+uv run --directory {{tool_path}} llm-wiki reindex -p ~/.llm-wiki/docs \\
+  --db ~/.llm-wiki/wiki.db
 ```
 
-Use `llm-wiki add <file>` only when indexing a single new document.
+For an explicitly isolated project (`mode = "isolated"`), reindex its local
+layout instead: `llm-wiki reindex -p /path/to/project --db
+/path/to/project/.llm-wiki/wiki.db`. Use `llm-wiki add <file>` only when
+indexing a single new document. `llm-wiki vault audit` compares the physical
+vault, the index, and the link graph in one report.
 
 ## Retrieval Usage
 
 Ask which documents are actually earning their place:
 
 ```bash
-uv run --directory {{tool_path}} llm-wiki usage \\
-  --db /path/to/project/.llm-wiki/wiki.db
+uv run --directory {{tool_path}} llm-wiki usage --db ~/.llm-wiki/wiki.db
 ```
 
 Documents that were never retrieved are promotion candidates that did not pay
@@ -302,9 +320,12 @@ grep "llm-wiki ask-context" /path/to/project/{hook_script_rel}
 
 ## Behavior
 
-The generated hook runs on `{hook_event}`. It is read-only: it checks for a
-project `.llm-wiki/config.toml`, `LLM_WIKI_DB`, or `LLM_WIKI_HOME`, runs
-`llm-wiki ask-context`, and returns `additionalContext` only when context exists.
+The generated hook runs on `{hook_event}`. It is read-only: the installer
+resolves the project's wiki scope once and embeds explicit arguments, so a
+global-mode project runs `llm-wiki ask-context --db ~/.llm-wiki/wiki.db
+--project <slug>` without depending on shell startup files, and an isolated
+project passes its local `--db`. It returns `additionalContext` only when
+context exists.
 
 ## Hook Choice
 

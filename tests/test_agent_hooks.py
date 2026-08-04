@@ -311,3 +311,113 @@ def test_smart_hook_output_event_matches_registered_event(
         data = _run_script(hooks_dir / script_name, stdin=stdin, cwd=cwd)
         assert data["hookSpecificOutput"]["hookEventName"] == event_name
         assert event_name in settings["hooks"]
+
+
+def _install_recording_cli(bin_dir: Path, record_path: Path) -> None:
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    mock_cli = bin_dir / "llm-wiki"
+    body = "X" * 400
+    _ = mock_cli.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        f"open({str(record_path)!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
+        "print('Use this context before answering:\\n- [1] Doc (doc.md)\\n  '"
+        f" + {body!r})\n",
+        encoding="utf-8",
+    )
+    mock_cli.chmod(0o755)
+
+
+def _run_prompt_hook(
+    script_path: Path, project_dir: Path, bin_dir: Path
+) -> subprocess.CompletedProcess[str]:
+    import os
+
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in ("LLM_WIKI_DB", "LLM_WIKI_HOME")
+    }
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+    event = {
+        "prompt": "how do we deploy this project",
+        "cwd": str(project_dir),
+        "session_id": f"test_session_scope_{uuid.uuid4().hex}",
+    }
+    return subprocess.run(
+        [sys.executable, str(script_path)],
+        input=json.dumps(event),
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+
+
+def test_prompt_hook_passes_global_scope_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.toml").write_text('db_path = "wiki.db"\n', encoding="utf-8")
+    monkeypatch.setenv("LLM_WIKI_HOME", str(home))
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    project_dir = tmp_path / "demo-project"
+    (project_dir / ".llm-wiki").mkdir(parents=True)
+    (project_dir / ".llm-wiki" / "config.toml").write_text(
+        'mode = "global"\nproject_tag = "project:demo-project"\ndocs_dir = "docs"\n',
+        encoding="utf-8",
+    )
+
+    _ = install_agent_hooks(
+        CODEX_TARGET,
+        project_dir,
+        tool_path=tmp_path / "tool",
+        force=True,
+        include_prompt_auto_inject=True,
+    )
+    script_path = project_dir / ".codex" / "hooks" / "llm_wiki_user_prompt.py"
+    record_path = tmp_path / "recorded-args.json"
+    bin_dir = tmp_path / "bin"
+    _install_recording_cli(bin_dir, record_path)
+
+    proc = _run_prompt_hook(script_path, project_dir, bin_dir)
+
+    assert proc.returncode == 0
+    recorded = json.loads(record_path.read_text(encoding="utf-8"))
+    assert "--db" in recorded
+    assert str(home / "wiki.db") in recorded
+    assert "--project" in recorded
+    assert "demo-project" in recorded
+
+
+def test_prompt_hook_isolated_config_keeps_local_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    monkeypatch.delenv("LLM_WIKI_HOME", raising=False)
+    project_dir = tmp_path / "private-client"
+    (project_dir / ".llm-wiki").mkdir(parents=True)
+    (project_dir / ".llm-wiki" / "config.toml").write_text(
+        'mode = "isolated"\ndocs_dir = "docs"\ndb_path = ".llm-wiki/wiki.db"\n',
+        encoding="utf-8",
+    )
+
+    _ = install_agent_hooks(
+        CODEX_TARGET,
+        project_dir,
+        tool_path=tmp_path / "tool",
+        force=True,
+        include_prompt_auto_inject=True,
+    )
+    script_path = project_dir / ".codex" / "hooks" / "llm_wiki_user_prompt.py"
+    record_path = tmp_path / "recorded-args.json"
+    bin_dir = tmp_path / "bin"
+    _install_recording_cli(bin_dir, record_path)
+
+    proc = _run_prompt_hook(script_path, project_dir, bin_dir)
+
+    assert proc.returncode == 0
+    recorded = json.loads(record_path.read_text(encoding="utf-8"))
+    assert "--db" in recorded
+    assert str(project_dir / ".llm-wiki" / "wiki.db") in recorded
+    assert "--project" not in recorded

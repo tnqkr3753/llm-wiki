@@ -42,7 +42,36 @@ Obsidian resolves `[[page]]` links by default. Confirm under
   one — the same set `llm-wiki links <id>` prints under `← backlinks`.
 
 If a page appears as an isolated dot, it has no `[[wikilinks]]` yet — add one
-back to the [[index]] to connect it.
+back to the [[index]] to connect it. For an audit pass, enable **Orphans** in
+Graph View settings (with **Existing files only** and **Tags** on) so
+unconnected notes and unresolved targets are visible at a glance.
+
+## 3b. Project hubs in the global vault
+
+When projects are materialized into the global vault with
+`llm-wiki vault import` (see [[runbooks/migrate-to-global-wiki]]), each
+project lives under a namespace such as `projects/evbp-etl/`:
+
+- `projects/<slug>/index.md` is the **project hub**; a managed block inside it
+  links every imported note of that project.
+- Every managed note carries a managed `Related: [[projects/<slug>/index]]`
+  backlink, so no managed note is an orphan.
+- The global `index.md` carries a managed block linking every project hub.
+- Project tags are YAML list tags (`project:<slug>`), so they appear as
+  separate tag nodes in Graph View instead of one comma-separated scalar.
+
+Cross-check the whole surface with:
+
+```bash
+llm-wiki vault audit --home ~/.llm-wiki --db ~/.llm-wiki/wiki.db
+```
+
+It compares physical Markdown against indexed documents and reports orphan
+nodes, unresolved wikilink targets, and indexed paths outside the vault.
+
+**Rollback**: restore the backed-up `docs/` tree and DB from
+`~/.llm-wiki/backups/`; source repositories are never modified by the import,
+so no repo-side rollback is needed.
 
 ## 4. Conventions when adding pages
 

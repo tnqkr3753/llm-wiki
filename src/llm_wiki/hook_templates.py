@@ -91,8 +91,18 @@ if __name__ == "__main__":
 """
 
 
-def prompt_hook_script(target: AgentTarget, tool_path: str) -> str:
-    """UserPromptSubmit hook: retrieves and injects LLM Wiki context per prompt."""
+def prompt_hook_script(
+    target: AgentTarget,
+    tool_path: str,
+    db_path: str | None = None,
+    project_slug: str | None = None,
+) -> str:
+    """UserPromptSubmit hook: retrieves and injects LLM Wiki context per prompt.
+
+    ``db_path`` and ``project_slug`` are resolved at install time and embedded
+    as constants, so the generated script does not depend on shell startup
+    files (GUI-launched agents may never source them) nor parse TOML itself.
+    """
     hook_output_source = context_output_source(target, target.hook_event)
     return f"""#!/usr/bin/env python3
 import hashlib
@@ -105,6 +115,8 @@ import time
 from pathlib import Path
 
 TOOL_PATH = {tool_path!r}
+DB_PATH = {db_path!r}
+PROJECT_SLUG = {project_slug!r}
 MAX_CONTEXT_CHARS = int(os.environ.get("LLM_WIKI_MAX_CONTEXT_CHARS", 2000))
 MIN_CONTEXT_CHARS = int(os.environ.get("LLM_WIKI_MIN_CONTEXT_CHARS", 100))
 MIN_PROMPT_CHARS = int(os.environ.get("LLM_WIKI_MIN_PROMPT_CHARS", 3))
@@ -201,6 +213,8 @@ def get_session_state_file(session_id, cwd):
 
 def get_db_mtime(cwd: Path) -> float:
     try:
+        if DB_PATH and Path(DB_PATH).is_file():
+            return Path(DB_PATH).stat().st_mtime
         env_db = os.environ.get("LLM_WIKI_DB")
         if env_db and Path(env_db).is_file():
             return Path(env_db).stat().st_mtime
@@ -277,6 +291,8 @@ def save_context_hash(session_id, cwd, context_hash, db_mtime, context_len):
 
 
 def should_query_wiki(cwd):
+    if DB_PATH:
+        return True
     if os.environ.get("LLM_WIKI_DB") or os.environ.get("LLM_WIKI_HOME"):
         return True
     for path in (cwd, *cwd.parents):
@@ -287,6 +303,10 @@ def should_query_wiki(cwd):
 
 def ask_context(prompt, cwd):
     command = ["llm-wiki", "ask-context", prompt]
+    if DB_PATH:
+        command += ["--db", DB_PATH]
+    if PROJECT_SLUG:
+        command += ["--project", PROJECT_SLUG]
     try:
         result = subprocess.run(
             command,

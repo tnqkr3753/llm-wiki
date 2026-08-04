@@ -35,17 +35,39 @@ separation while keeping every document in one connected graph.
   in addition to a kind tag (`decision`, `runbook`, `reference`).
 - Truly cross-project knowledge simply omits any `project:` tag.
 
+## SQLite graph versus the physical Obsidian vault
+
+These are two different surfaces, and only one of them is visible in Obsidian:
+
+- **The SQLite index** (`~/.llm-wiki/wiki.db`) can index Markdown from many
+  roots at once. The CLI graph (`llm-wiki links`, search, backlinks) connects
+  across all of them.
+- **The physical vault** is a folder. Obsidian only sees files inside the
+  opened vault — external paths that SQLite knows about never appear in
+  Graph View, no matter how well they are indexed.
+
+So the physical graph surface is `~/.llm-wiki/docs`. To make a project's
+documents visible in the one Obsidian graph, they are materialized into a
+collision-safe namespace such as `docs/projects/evbp-etl/` (for example,
+`decisions/a.md` from `evbp-etl` becomes
+`~/.llm-wiki/docs/projects/evbp-etl/decisions/a.md`), with the frontmatter
+tag `project:evbp-etl`. `llm-wiki vault import` performs that
+materialization dry-run-first; `llm-wiki vault audit` verifies that the
+physical vault, the index, and the link graph agree. See
+[[runbooks/migrate-to-global-wiki]].
+
 ## Retrieving within a scope
 
-`--tag` filters any search to documents carrying every given tag, exact match:
+`--project` selects one project's slice plus global/common documents:
 
 ```bash
-llm-wiki search "deploy" --tag project:foo
-llm-wiki ask-context "how do we deploy?" --tag project:foo --tag runbook
+llm-wiki search "deploy" --project foo
+llm-wiki ask-context "how do we deploy?" --project foo --tag runbook
 ```
 
-No `--tag` searches the whole graph, which is the point — one wiki, one graph,
-scoped only when you ask.
+`--tag` still filters to documents carrying every given tag, exact match.
+No scope option searches the whole graph, which is the point — one wiki, one
+graph, scoped only when you ask.
 
 ## What this does not remove
 

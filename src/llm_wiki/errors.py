@@ -71,6 +71,51 @@ class ConfigReadError(WikiError):
         """Build an error for unreadable configuration."""
         return cls(f"Could not read LLM Wiki config: {path}")
 
+    @classmethod
+    def invalid_slug(cls, name: str) -> "ConfigReadError":
+        """Build an error for a directory name with no usable project slug."""
+        return cls(f"Cannot derive a project slug from: {name}")
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectScopeError(WikiError):
+    """Raised when a requested project scope is not a valid slug."""
+
+    @classmethod
+    def invalid(cls, value: str) -> "ProjectScopeError":
+        """Build an error for an unusable project scope value."""
+        return cls(f"Invalid project scope: {value}")
+
+
+@dataclass(frozen=True, slots=True)
+class VaultError(WikiError):
+    """Raised when global vault planning or application must stop."""
+
+    @classmethod
+    def duplicate_slug(cls, slug: str) -> "VaultError":
+        """Build an error for a project slug used by two sources."""
+        return cls(f"Duplicate project slug: {slug}")
+
+    @classmethod
+    def invalid_source_slug(cls, slug: str) -> "VaultError":
+        """Build an error for a source slug that is not a valid project slug."""
+        return cls(f"Invalid project slug: {slug}")
+
+    @classmethod
+    def missing_root(cls, path: Path) -> "VaultError":
+        """Build an error for a source docs root that is not a directory."""
+        return cls(f"Source docs root is not a directory: {path}")
+
+    @classmethod
+    def conflicts_block_apply(cls, count: int) -> "VaultError":
+        """Build an error refusing to apply a plan with conflicts."""
+        return cls(f"Refusing to apply: {count} unmanaged target conflict(s)")
+
+    @classmethod
+    def invalid_source_spec(cls, spec: str) -> "VaultError":
+        """Build an error for a malformed slug=/abs/docs source mapping."""
+        return cls(f"Invalid --source mapping (expected slug=/abs/docs): {spec}")
+
 
 @dataclass(frozen=True, slots=True)
 class SqlColumnTypeError(WikiError):

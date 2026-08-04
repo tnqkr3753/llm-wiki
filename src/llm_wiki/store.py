@@ -9,7 +9,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
-from llm_wiki.errors import DocumentNotFoundError, SqlColumnTypeError, WikiError
+from llm_wiki.config import PROJECT_SLUG_PATTERN, PROJECT_TAG_PREFIX
+from llm_wiki.errors import (
+    DocumentNotFoundError,
+    ProjectScopeError,
+    SqlColumnTypeError,
+    WikiError,
+)
 from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import (
     DocumentId,
@@ -189,6 +195,7 @@ def search(
     min_score: float = 0.0,
     usage_weight: float = 0.0,
     tags: Sequence[str] = (),
+    project: str | None = None,
 ) -> list[SearchResult]:
     """Search indexed documents with SQLite FTS5.
 
@@ -199,13 +206,28 @@ def search(
     ``tags`` scopes the results to documents carrying *every* given tag (exact
     membership, not substring). This is how one shared wiki is partitioned —
     e.g. ``project:foo`` — without splitting the index into separate databases.
+
+    ``project`` selects one project's slice of the shared wiki: rows tagged
+    exactly ``project:<slug>`` plus global/common rows carrying no project
+    tag at all. Rows tagged only for other projects are excluded. ``tags``
+    still applies afterwards.
     """
     initialize(db_path)
+    project_tag = None if project is None else normalize_project_scope(project)
     fts_query = _literal_fts_query(query)
     if fts_query == "":
         return []
-    widen = usage_weight > 0 or bool(tags)
-    fetch_limit = max(limit * CANDIDATE_MULTIPLIER, MIN_CANDIDATES) if widen else limit
+    filtered = bool(tags) or project_tag is not None
+    widen = usage_weight > 0 or filtered
+    # Tag/project filters must see every FTS candidate (LIMIT -1): a match for
+    # the selected scope may rank below many out-of-scope rows and would be
+    # lost behind a truncated candidate window.
+    if filtered:
+        fetch_limit = -1
+    elif widen:
+        fetch_limit = max(limit * CANDIDATE_MULTIPLIER, MIN_CANDIDATES)
+    else:
+        fetch_limit = limit
     with closing(sqlite3.connect(db_path)) as connection:
         rows = _fetch_all(
             connection,
@@ -227,11 +249,33 @@ def search(
         )
 
     ranked = [row for row in rows if _row_bm25_score(row) >= min_score]
+    if project_tag is not None:
+        ranked = _filter_by_project(ranked, project_tag)
     if tags:
         ranked = _filter_by_tags(ranked, tags)
     if usage_weight > 0:
         ranked = _rank_by_usage(db_path, ranked, usage_weight)
     return [_result_from_row(row) for row in ranked[:limit]]
+
+
+def normalize_project_scope(value: str) -> str:
+    """Turn CLI input like ``foo`` or ``project:foo`` into a stored tag."""
+    candidate = value.strip()
+    slug = candidate.removeprefix(PROJECT_TAG_PREFIX)
+    if PROJECT_SLUG_PATTERN.fullmatch(slug) is None:
+        raise ProjectScopeError.invalid(value)
+    return f"{PROJECT_TAG_PREFIX}{slug}"
+
+
+def _filter_by_project(rows: list[SqlRow], project_tag: str) -> list[SqlRow]:
+    """Keep rows for the selected project plus rows with no project tag."""
+    kept: list[SqlRow] = []
+    for row in rows:
+        row_tags = set(_split_tags(_row_str(row, 3)))
+        has_project_tag = any(tag.startswith(PROJECT_TAG_PREFIX) for tag in row_tags)
+        if not has_project_tag or project_tag in row_tags:
+            kept.append(row)
+    return kept
 
 
 def _filter_by_tags(rows: list[SqlRow], tags: Sequence[str]) -> list[SqlRow]:
@@ -505,6 +549,37 @@ def backlinks(db_path: Path, document_id: DocumentId) -> tuple[DocumentLink, ...
                 seen.add(source_id)
                 incoming.append(source)
     return tuple(incoming)
+
+
+def link_graph(
+    db_path: Path,
+) -> tuple[
+    tuple[DocumentLink, ...],
+    tuple[tuple[int, int], ...],
+    tuple[str, ...],
+]:
+    """Return all documents, resolved link edges, and unresolved link targets."""
+    initialize(db_path)
+    with closing(sqlite3.connect(db_path)) as connection:
+        documents = _document_index(connection)
+        edges = _fetch_all(
+            connection,
+            "SELECT source_id, target FROM document_links ORDER BY source_id, rowid",
+            (),
+        )
+
+    resolved: list[tuple[int, int]] = []
+    unresolved: list[str] = []
+    for edge in edges:
+        source_id = _row_int(edge, 0)
+        target = _row_str(edge, 1)
+        match = _resolve_target(target, documents)
+        if match is None:
+            if target not in unresolved:
+                unresolved.append(target)
+        elif int(match.id) != source_id:
+            resolved.append((source_id, int(match.id)))
+    return tuple(documents), tuple(resolved), tuple(unresolved)
 
 
 def _document_index(connection: sqlite3.Connection) -> list[DocumentLink]:

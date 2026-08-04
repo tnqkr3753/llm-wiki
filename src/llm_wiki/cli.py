@@ -20,10 +20,16 @@ from llm_wiki.agent_skills import (
     uninstall_agent_skills,
 )
 from llm_wiki.agents import CLAUDE_TARGET, CODEX_TARGET, GEMINI_TARGET, AgentTarget
-from llm_wiki.config import resolve_db_path
+from llm_wiki.config import resolve_db_path, resolve_home_path
 from llm_wiki.doctor import run_doctor
 from llm_wiki.errors import WikiError
 from llm_wiki.git_hook import install_git_hook
+from llm_wiki.global_vault import (
+    apply_global_vault,
+    audit_global_vault,
+    parse_source_mapping,
+    plan_global_vault,
+)
 from llm_wiki.hook_stats import show_hook_stats
 from llm_wiki.init_project import InitResult, initialize_global, initialize_project
 from llm_wiki.markdown import parse_markdown_file
@@ -49,6 +55,7 @@ claude_app = typer.Typer(no_args_is_help=True)
 gemini_app = typer.Typer(no_args_is_help=True)
 project_app = typer.Typer(no_args_is_help=True)
 git_hook_app = typer.Typer(no_args_is_help=True)
+vault_app = typer.Typer(no_args_is_help=True)
 console = Console(markup=False, width=1000)
 
 DbOption = Annotated[
@@ -123,6 +130,11 @@ app.add_typer(claude_app, name="claude", help="Install Claude Code integrations.
 app.add_typer(gemini_app, name="gemini", help="Install Gemini CLI integrations.")
 app.add_typer(project_app, name="project", help="Manage project-local wiki state.")
 app.add_typer(git_hook_app, name="git-hook", help="Manage Git hooks for LLM Wiki.")
+app.add_typer(
+    vault_app,
+    name="vault",
+    help="Materialize and audit the global Obsidian vault.",
+)
 
 
 @app.command()
@@ -144,11 +156,101 @@ def project_init(
             help="Write AGENTS.md instructions for Codex integration.",
         ),
     ] = False,
+    isolated: Annotated[
+        bool,
+        typer.Option(
+            "--isolated",
+            help="Keep a project-local wiki DB instead of the global wiki.",
+        ),
+    ] = False,
+    home: HomeOption = None,
 ) -> None:
-    """Initialize an LLM Wiki layout for a project."""
+    """Initialize an LLM Wiki layout for a project (global wiki by default)."""
     project_path = Path.cwd() if path is None else path
-    result = initialize_project(project_path, include_agents=agents)
+    result = initialize_project(
+        project_path,
+        include_agents=agents,
+        isolated=isolated,
+        home_path=home,
+    )
     _print_init_result(result)
+
+
+@vault_app.command("import")
+def vault_import(
+    source: Annotated[
+        list[str],
+        typer.Option(
+            "--source",
+            help="Repeatable slug=/absolute/docs/root source mapping.",
+        ),
+    ],
+    home: HomeOption = None,
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Apply a conflict-free plan after review."),
+    ] = False,
+) -> None:
+    """Plan (dry-run) or apply namespaced project imports into the vault."""
+    try:
+        sources = [parse_source_mapping(spec) for spec in source]
+        plan = plan_global_vault(resolve_home_path(home), sources)
+    except WikiError as exc:
+        console.print(f"error: {exc}")
+        raise typer.Exit(1) from exc
+
+    counts = dict.fromkeys(("create", "update", "unchanged", "conflict"), 0)
+    for entry in plan.entries:
+        counts[entry.action] += 1
+    console.print(
+        "plan: "
+        + " ".join(f"{action}={count}" for action, count in counts.items())
+        + f" skipped={len(plan.skipped)}"
+    )
+    for skipped_path in plan.skipped:
+        console.print(f"skipped: {skipped_path}")
+    for conflict in plan.conflicts:
+        console.print(f"conflict: {conflict.target}")
+
+    if not apply:
+        manifest_dir = plan.home / "migrations"
+        console.print(f"dry-run only; manifest would be written under {manifest_dir}")
+        return
+
+    try:
+        manifest_path = apply_global_vault(plan)
+    except WikiError as exc:
+        console.print(f"error: {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"applied; manifest: {manifest_path}")
+
+
+@vault_app.command("audit")
+def vault_audit(
+    home: HomeOption = None,
+    db: DbOption = None,
+) -> None:
+    """Compare the physical vault against the retrieval index and link graph."""
+    resolved_home = resolve_home_path(home)
+    db_path = resolve_db_path(db)
+    try:
+        audit = audit_global_vault(resolved_home, db_path)
+    except WikiError as exc:
+        console.print(f"error: {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(f"markdown_files: {audit.markdown_files}")
+    console.print(f"indexed_documents: {audit.indexed_documents}")
+    console.print(f"resolved_edges: {audit.resolved_edges}")
+    console.print(f"orphan_paths: {len(audit.orphan_paths)}")
+    for orphan in audit.orphan_paths:
+        console.print(f"orphan: {orphan}")
+    console.print(f"unresolved_targets: {len(audit.unresolved_targets)}")
+    for target in audit.unresolved_targets:
+        console.print(f"unresolved: {target}")
+    console.print(f"external_index_paths: {len(audit.external_index_paths)}")
+    for external in audit.external_index_paths:
+        console.print(f"external: {external}")
 
 
 def _print_init_result(result: InitResult) -> None:
@@ -389,11 +491,27 @@ TagOption = Annotated[
 ]
 
 
+ProjectScopeOption = Annotated[
+    str | None,
+    typer.Option(
+        "--project",
+        help="Scope to one project's documents plus global/common documents. "
+        "Accepts a slug like foo or the full tag project:foo.",
+    ),
+]
+
+
 def _print_search_results(
-    query: str, db: Path | None, limit: int, tags: list[str] | None
+    query: str,
+    db: Path | None,
+    limit: int,
+    tags: list[str] | None,
+    project: str | None,
 ) -> None:
     try:
-        results = search(resolve_db_path(db), query, limit, tags=tags or ())
+        results = search(
+            resolve_db_path(db), query, limit, tags=tags or (), project=project
+        )
     except WikiError as exc:
         console.print(f"Error: {exc}")
         raise typer.Exit(1) from exc
@@ -413,9 +531,10 @@ def search_alias(
     db: DbOption = None,
     limit: LimitOption = DEFAULT_LIMIT,
     tag: TagOption = None,
+    project: ProjectScopeOption = None,
 ) -> None:
     """Search indexed documents."""
-    _print_search_results(query=query, db=db, limit=limit, tags=tag)
+    _print_search_results(query=query, db=db, limit=limit, tags=tag, project=project)
 
 
 @app.command()
@@ -480,6 +599,7 @@ def ask_context(
         ),
     ] = DEFAULT_USAGE_WEIGHT,
     tag: TagOption = None,
+    project: ProjectScopeOption = None,
 ) -> None:
     """Print grounded snippets to paste into an LLM prompt."""
     db_path = resolve_db_path(db)
@@ -491,6 +611,7 @@ def ask_context(
             min_score=min_score,
             usage_weight=usage_weight,
             tags=tag or (),
+            project=project,
         )
     except WikiError as exc:
         console.print(f"Error: {exc}")

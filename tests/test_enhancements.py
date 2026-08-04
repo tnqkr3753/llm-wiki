@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from llm_wiki.cli import app
@@ -85,3 +86,60 @@ def test_bm25_min_score_filtering(tmp_path: Path) -> None:
 
     results_normal = search(db_path, "Python", limit=5, min_score=0.0)
     assert len(results_normal) == 1
+
+
+def test_doctor_warns_on_legacy_implicit_isolated_config(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    (project_dir / ".llm-wiki").mkdir(parents=True)
+    (project_dir / ".llm-wiki" / "config.toml").write_text(
+        'docs_dir = "docs"\ndb_path = ".llm-wiki/wiki.db"\n', encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["doctor", "-p", str(project_dir)])
+
+    assert result.exit_code == 0
+    assert "legacy" in result.output.lower()
+
+
+def test_doctor_warns_when_global_mode_agents_points_to_local_db(
+    tmp_path: Path,
+) -> None:
+    project_dir = tmp_path / "demo-project"
+    (project_dir / ".llm-wiki").mkdir(parents=True)
+    (project_dir / ".llm-wiki" / "config.toml").write_text(
+        'mode = "global"\nproject_tag = "project:demo-project"\ndocs_dir = "docs"\n',
+        encoding="utf-8",
+    )
+    local_db = project_dir / ".llm-wiki" / "wiki.db"
+    (project_dir / "AGENTS.md").write_text(
+        f"# LLM Wiki Instructions\n\nllm-wiki ask-context --db {local_db}\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["doctor", "-p", str(project_dir)])
+
+    assert result.exit_code == 0
+    assert "stale" in result.output.lower()
+
+
+def test_doctor_reports_rows_outside_global_docs_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from llm_wiki.markdown import parse_markdown_file
+    from llm_wiki.store import upsert_document
+
+    home = tmp_path / "home"
+    (home / "docs").mkdir(parents=True)
+    monkeypatch.setenv("LLM_WIKI_HOME", str(home))
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    external = tmp_path / "external.md"
+    external.write_text("# External\n\nBody.\n", encoding="utf-8")
+    _ = upsert_document(home / "wiki.db", parse_markdown_file(external))
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    result = runner.invoke(app, ["doctor", "-p", str(project_dir)])
+
+    assert result.exit_code == 0
+    assert "outside" in result.output.lower()
