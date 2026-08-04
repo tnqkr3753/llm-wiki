@@ -36,8 +36,14 @@ def context_output_source(target: AgentTarget, event_name: str) -> str:
     return '{"additionalContext": context_text}'
 
 
-def startup_script(target: AgentTarget) -> str:
-    """SessionStart awareness hook: announces the project wiki is active."""
+def startup_script(target: AgentTarget, db_path: str | None = None) -> str:
+    """SessionStart awareness hook: announces the project wiki is active.
+
+    ``db_path`` is resolved at install time (global-mode projects have no
+    local ``wiki.db``, so a file check alone would stay silent for them). A
+    project ``config.toml`` found at runtime also counts as active, covering
+    scripts installed before the project switched modes.
+    """
     hook_output_source = context_output_source(target, target.startup_event)
     return f"""#!/usr/bin/env python3
 import json
@@ -45,13 +51,23 @@ import os
 import sys
 from pathlib import Path
 
+DB_PATH = {db_path!r}
+
 def main():
     cwd = Path(os.getcwd())
     wiki_db = cwd / ".llm-wiki" / "wiki.db"
-    if not wiki_db.is_file() and not os.environ.get("LLM_WIKI_DB"):
+    wiki_config = cwd / ".llm-wiki" / "config.toml"
+    active = (
+        bool(DB_PATH)
+        or wiki_db.is_file()
+        or wiki_config.is_file()
+        or bool(os.environ.get("LLM_WIKI_DB"))
+    )
+    if not active:
         return
 
-    context_text = "[LLM Wiki] Project wiki active (.llm-wiki/wiki.db). Use skill 'llm-wiki-recall' for project rules or runbooks."
+    db_display = DB_PATH or str(wiki_db)
+    context_text = "[LLM Wiki] Project wiki active (" + db_display + "). Use skill 'llm-wiki-recall' for project rules or runbooks."
     print(json.dumps(
         {{"hookSpecificOutput": {hook_output_source}}},
         ensure_ascii=False,

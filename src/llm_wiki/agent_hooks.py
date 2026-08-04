@@ -108,11 +108,12 @@ def install_startup_hook(
     force: bool = True,
 ) -> HookInstallResult:
     """Install a lightweight (~15 token) SessionStart awareness hook for LLM Wiki."""
+    db_path, _ = _resolve_hook_scope(project_path.expanduser().resolve())
     return _install_smart_hook(
         target,
         project_path,
         script_name="llm_wiki_startup.py",
-        script_source=startup_script(target),
+        script_source=startup_script(target, db_path=db_path),
         event_name=target.startup_event,
         force=force,
     )
