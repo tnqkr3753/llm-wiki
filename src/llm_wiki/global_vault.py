@@ -95,14 +95,18 @@ def plan_global_vault(home: Path, sources: Sequence[ProjectSource]) -> VaultPlan
 
     entries: list[VaultEntry] = []
     skipped: list[Path] = []
-    hub_links: list[str] = []
+    hub_links: set[str] = set()
     for source in ordered:
         source_entries, source_skipped = _plan_source(resolved_home, source)
         entries.extend(source_entries)
         skipped.extend(source_skipped)
-        hub_links.append(f"{PROJECTS_DIR}/{source.slug}/index")
+        hub_links.add(f"{PROJECTS_DIR}/{source.slug}/index")
 
-    entries.append(_plan_global_index(resolved_home, hub_links))
+    # Another machine may have materialized projects this machine has no
+    # source for (the vault is shared via git). Keep their hubs linked so
+    # imports on different machines do not oscillate the managed block.
+    hub_links.update(_physical_hub_links(resolved_home))
+    entries.append(_plan_global_index(resolved_home, sorted(hub_links)))
 
     finalized = tuple(
         _with_action(entry, owned_state) for entry in sorted(entries, key=_target_key)
@@ -216,7 +220,7 @@ def _plan_source(
     hub_link = f"{PROJECTS_DIR}/{source.slug}/index"
 
     entries: list[VaultEntry] = []
-    note_links: list[str] = []
+    note_links: set[str] = set()
     hub_source_raw: str | None = None
     for path in included:
         relative = path.relative_to(root)
@@ -236,7 +240,11 @@ def _plan_source(
                 rendered=rendered,
             )
         )
-        note_links.append(f"{PROJECTS_DIR}/{source.slug}/{relative.with_suffix('')}")
+        note_links.add(f"{PROJECTS_DIR}/{source.slug}/{relative.with_suffix('')}")
+
+    # Notes materialized by another machine (or promoted directly into the
+    # namespace) have no local source; keep them listed on the hub.
+    note_links.update(_physical_note_links(namespace, source.slug))
 
     hub_base = (
         hub_source_raw
@@ -262,6 +270,27 @@ def _plan_source(
         )
     )
     return entries, skipped
+
+
+def _physical_hub_links(home: Path) -> set[str]:
+    projects_root = home / "docs" / PROJECTS_DIR
+    if not projects_root.is_dir():
+        return set()
+    return {
+        f"{PROJECTS_DIR}/{child.name}/index"
+        for child in projects_root.iterdir()
+        if (child / "index.md").is_file()
+    }
+
+
+def _physical_note_links(namespace: Path, slug: str) -> set[str]:
+    if not namespace.is_dir():
+        return set()
+    return {
+        f"{PROJECTS_DIR}/{slug}/{path.relative_to(namespace).with_suffix('')}"
+        for path in iter_markdown_files(namespace)
+        if path.relative_to(namespace) != Path("index.md")
+    }
 
 
 def _plan_global_index(home: Path, hub_links: Sequence[str]) -> VaultEntry:
