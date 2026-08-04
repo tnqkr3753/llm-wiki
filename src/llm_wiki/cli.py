@@ -210,7 +210,8 @@ def vault_import(
     for skipped_path in plan.skipped:
         console.print(f"skipped: {skipped_path}")
     for conflict in plan.conflicts:
-        console.print(f"conflict: {conflict.target}")
+        reason = f" ({conflict.conflict_reason})" if conflict.conflict_reason else ""
+        console.print(f"conflict: {conflict.target}{reason}")
 
     if not apply:
         manifest_dir = plan.home / "migrations"

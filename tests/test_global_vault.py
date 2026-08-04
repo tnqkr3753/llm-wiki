@@ -386,3 +386,38 @@ def test_vault_audit_cli_reports_counts(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "markdown_files" in result.output
     assert "external_index_paths" in result.output
+
+
+def test_locally_modified_managed_target_blocks_apply(tmp_path: Path) -> None:
+    home = _home(tmp_path)
+    source = _make_source(tmp_path, "alpha", {"decisions/a.md": DOC})
+    _ = apply_global_vault(plan_global_vault(home, [source]))
+    managed = home / "docs" / "projects" / "alpha" / "decisions" / "a.md"
+    edited = managed.read_text("utf-8") + "\nVault-side manual edit.\n"
+    _ = managed.write_text(edited, encoding="utf-8")
+
+    replan = plan_global_vault(home, [source])
+
+    assert managed in {entry.target for entry in replan.conflicts}
+    with pytest.raises(VaultError):
+        _ = apply_global_vault(replan)
+    assert managed.read_text("utf-8") == edited
+
+
+def test_source_update_of_pristine_target_is_update(tmp_path: Path) -> None:
+    home = _home(tmp_path)
+    source = _make_source(tmp_path, "alpha", {"decisions/a.md": DOC})
+    _ = apply_global_vault(plan_global_vault(home, [source]))
+    source_file = source.docs_root / "decisions" / "a.md"
+    _ = source_file.write_text(
+        DOC.replace("Body.", "Updated source body."), encoding="utf-8"
+    )
+
+    replan = plan_global_vault(home, [source])
+    managed = home / "docs" / "projects" / "alpha" / "decisions" / "a.md"
+    actions = {entry.target: entry.action for entry in replan.entries}
+
+    assert actions[managed] == "update"
+    assert replan.conflicts == ()
+    _ = apply_global_vault(replan)
+    assert "Updated source body." in managed.read_text("utf-8")

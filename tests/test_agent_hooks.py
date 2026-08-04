@@ -421,3 +421,30 @@ def test_prompt_hook_isolated_config_keeps_local_db(
     assert "--db" in recorded
     assert str(project_dir / ".llm-wiki" / "wiki.db") in recorded
     assert "--project" not in recorded
+
+
+def test_startup_hook_announces_global_mode_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.toml").write_text('db_path = "wiki.db"\n', encoding="utf-8")
+    monkeypatch.setenv("LLM_WIKI_HOME", str(home))
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    project_dir = tmp_path / "demo-project"
+    (project_dir / ".llm-wiki").mkdir(parents=True)
+    (project_dir / ".llm-wiki" / "config.toml").write_text(
+        'mode = "global"\nproject_tag = "project:demo-project"\ndocs_dir = "docs"\n',
+        encoding="utf-8",
+    )
+
+    _ = install_agent_hooks(CLAUDE_TARGET, project_dir, force=True)
+    script_path = project_dir / ".claude" / "hooks" / "llm_wiki_startup.py"
+    monkeypatch.delenv("LLM_WIKI_HOME", raising=False)
+
+    data = _run_script(script_path, cwd=project_dir)
+    output = data["hookSpecificOutput"]
+
+    assert output["hookEventName"] == "SessionStart"
+    assert "LLM Wiki" in output["additionalContext"]
+    assert str(home / "wiki.db") in output["additionalContext"]

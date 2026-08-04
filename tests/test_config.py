@@ -190,3 +190,18 @@ def test_project_without_config_has_no_project_tag(tmp_path: Path) -> None:
 
     assert resolve_project_config(empty) is None
     assert resolve_project_tag(empty) is None
+
+
+def test_global_home_config_is_not_a_project_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / ".llm-wiki"
+    (home / "docs").mkdir(parents=True)
+    (home / "config.toml").write_text(
+        'docs_dir = "docs"\ndb_path = "wiki.db"\n', encoding="utf-8"
+    )
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    monkeypatch.setenv("LLM_WIKI_HOME", str(home))
+
+    assert resolve_project_config(home / "docs") is None
+    assert resolve_db_path(None, home / "docs") == home / "wiki.db"

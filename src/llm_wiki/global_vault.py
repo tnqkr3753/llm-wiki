@@ -61,6 +61,7 @@ class VaultEntry:
     rendered_sha256: str
     action: VaultAction
     rendered: str = ""
+    conflict_reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +91,7 @@ def plan_global_vault(home: Path, sources: Sequence[ProjectSource]) -> VaultPlan
     """Plan namespaced copies without changing source or destination files."""
     resolved_home = home.expanduser().resolve()
     ordered = _validated_sources(sources)
-    owned_targets = _owned_targets(resolved_home)
+    owned_state = _owned_state(resolved_home)
 
     entries: list[VaultEntry] = []
     skipped: list[Path] = []
@@ -104,7 +105,7 @@ def plan_global_vault(home: Path, sources: Sequence[ProjectSource]) -> VaultPlan
     entries.append(_plan_global_index(resolved_home, hub_links))
 
     finalized = tuple(
-        _with_action(entry, owned_targets) for entry in sorted(entries, key=_target_key)
+        _with_action(entry, owned_state) for entry in sorted(entries, key=_target_key)
     )
     conflicts = tuple(entry for entry in finalized if entry.action == "conflict")
     return VaultPlan(
@@ -290,27 +291,47 @@ def _plan_global_index(home: Path, hub_links: Sequence[str]) -> VaultEntry:
     )
 
 
-def _with_action(entry: VaultEntry, owned_targets: frozenset[str]) -> VaultEntry:
+def _with_action(entry: VaultEntry, owned_state: dict[str, str]) -> VaultEntry:
     if entry.source == entry.target:
-        # The global index owns only its managed block; never a conflict.
-        action = _action_for_existing(entry) if entry.target.is_file() else "create"
+        # The global index owns only its managed block; its base is read from
+        # the current file at plan time, so user edits survive and it is
+        # never a conflict.
+        if not entry.target.is_file():
+            return _replace_action(entry, "create")
+        current_sha = _target_sha(entry.target)
+        action = "unchanged" if current_sha == entry.rendered_sha256 else "update"
         return _replace_action(entry, action)
     if not entry.target.exists():
         return _replace_action(entry, "create")
-    if str(entry.target) not in owned_targets:
-        return _replace_action(entry, "conflict")
-    return _replace_action(entry, _action_for_existing(entry))
+    action, reason = _existing_target_action(entry, owned_state)
+    return _replace_action(entry, action, reason=reason)
 
 
-def _action_for_existing(entry: VaultEntry) -> VaultAction:
-    current = entry.target.read_text(encoding="utf-8")
-    if _sha256(current.encode("utf-8")) == entry.rendered_sha256:
-        return "unchanged"
-    return "update"
+def _existing_target_action(
+    entry: VaultEntry, owned_state: dict[str, str]
+) -> tuple[VaultAction, str]:
+    current_sha = _target_sha(entry.target)
+    if current_sha == entry.rendered_sha256:
+        return "unchanged", ""
+    last_applied_sha = owned_state.get(str(entry.target))
+    if last_applied_sha is None:
+        return "conflict", "unmanaged"
+    if current_sha != last_applied_sha:
+        # Three-way check: the target differs from both the last applied
+        # rendering and the new rendering — someone edited the vault copy.
+        # Overwriting would silently destroy that edit.
+        return "conflict", "locally-modified"
+    return "update", ""
 
 
-def _replace_action(entry: VaultEntry, action: VaultAction) -> VaultEntry:
-    if entry.action == action:
+def _target_sha(target: Path) -> str:
+    return _sha256(target.read_bytes())
+
+
+def _replace_action(
+    entry: VaultEntry, action: VaultAction, reason: str = ""
+) -> VaultEntry:
+    if entry.action == action and entry.conflict_reason == reason:
         return entry
     return VaultEntry(
         source=entry.source,
@@ -319,6 +340,7 @@ def _replace_action(entry: VaultEntry, action: VaultAction) -> VaultEntry:
         rendered_sha256=entry.rendered_sha256,
         action=action,
         rendered=entry.rendered,
+        conflict_reason=reason,
     )
 
 
@@ -326,11 +348,16 @@ def _target_key(entry: VaultEntry) -> str:
     return str(entry.target)
 
 
-def _owned_targets(home: Path) -> frozenset[str]:
+def _owned_state(home: Path) -> dict[str, str]:
+    """Map each managed target to the rendered hash it was last applied with.
+
+    Later manifests override earlier ones, so the value reflects the most
+    recent applied state — the baseline for detecting vault-side edits.
+    """
     manifest_dir = home / MANIFEST_DIR
     if not manifest_dir.is_dir():
-        return frozenset()
-    owned: set[str] = set()
+        return {}
+    owned: dict[str, str] = {}
     for manifest_path in sorted(manifest_dir.glob("vault-manifest-*.json")):
         try:
             data: object = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -346,12 +373,14 @@ def _owned_targets(home: Path) -> frozenset[str]:
             continue
         raw_entries: list[object] = list(entries)  # pyright: ignore[reportUnknownArgumentType]
         for raw_entry in raw_entries:
-            if isinstance(raw_entry, dict):
-                entry_mapping: dict[object, object] = dict(raw_entry)  # pyright: ignore[reportUnknownArgumentType]
-                target = entry_mapping.get("target")
-                if isinstance(target, str):
-                    owned.add(target)
-    return frozenset(owned)
+            if not isinstance(raw_entry, dict):
+                continue
+            entry_mapping: dict[object, object] = dict(raw_entry)  # pyright: ignore[reportUnknownArgumentType]
+            target = entry_mapping.get("target")
+            rendered = entry_mapping.get("rendered_sha256")
+            if isinstance(target, str) and isinstance(rendered, str):
+                owned[target] = rendered
+    return owned
 
 
 def _write_manifest(
@@ -392,6 +421,7 @@ def _write_manifest(
                 "source_sha256": entry.source_sha256,
                 "rendered_sha256": entry.rendered_sha256,
                 "action": entry.action,
+                "conflict_reason": entry.conflict_reason,
             }
             for entry in plan.entries
         ],
