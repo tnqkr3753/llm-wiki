@@ -78,6 +78,16 @@ class ConfigReadError(WikiError):
 
 
 @dataclass(frozen=True, slots=True)
+class ProjectScopeError(WikiError):
+    """Raised when a requested project scope is not a valid slug."""
+
+    @classmethod
+    def invalid(cls, value: str) -> "ProjectScopeError":
+        """Build an error for an unusable project scope value."""
+        return cls(f"Invalid project scope: {value}")
+
+
+@dataclass(frozen=True, slots=True)
 class VaultError(WikiError):
     """Raised when global vault planning or application must stop."""
 

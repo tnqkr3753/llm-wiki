@@ -491,11 +491,27 @@ TagOption = Annotated[
 ]
 
 
+ProjectScopeOption = Annotated[
+    str | None,
+    typer.Option(
+        "--project",
+        help="Scope to one project's documents plus global/common documents. "
+        "Accepts a slug like foo or the full tag project:foo.",
+    ),
+]
+
+
 def _print_search_results(
-    query: str, db: Path | None, limit: int, tags: list[str] | None
+    query: str,
+    db: Path | None,
+    limit: int,
+    tags: list[str] | None,
+    project: str | None,
 ) -> None:
     try:
-        results = search(resolve_db_path(db), query, limit, tags=tags or ())
+        results = search(
+            resolve_db_path(db), query, limit, tags=tags or (), project=project
+        )
     except WikiError as exc:
         console.print(f"Error: {exc}")
         raise typer.Exit(1) from exc
@@ -515,9 +531,10 @@ def search_alias(
     db: DbOption = None,
     limit: LimitOption = DEFAULT_LIMIT,
     tag: TagOption = None,
+    project: ProjectScopeOption = None,
 ) -> None:
     """Search indexed documents."""
-    _print_search_results(query=query, db=db, limit=limit, tags=tag)
+    _print_search_results(query=query, db=db, limit=limit, tags=tag, project=project)
 
 
 @app.command()
@@ -582,6 +599,7 @@ def ask_context(
         ),
     ] = DEFAULT_USAGE_WEIGHT,
     tag: TagOption = None,
+    project: ProjectScopeOption = None,
 ) -> None:
     """Print grounded snippets to paste into an LLM prompt."""
     db_path = resolve_db_path(db)
@@ -593,6 +611,7 @@ def ask_context(
             min_score=min_score,
             usage_weight=usage_weight,
             tags=tag or (),
+            project=project,
         )
     except WikiError as exc:
         console.print(f"Error: {exc}")

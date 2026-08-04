@@ -2,9 +2,11 @@
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from llm_wiki.cli import app
+from llm_wiki.errors import WikiError
 from llm_wiki.models import ParsedDocument
 from llm_wiki.store import search, upsert_document
 
@@ -96,3 +98,93 @@ def test_ask_context_command_filters_by_tag(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "Beta" in result.output
     assert "Alpha" not in result.output
+
+
+def test_project_scope_includes_common_and_selected_project(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/common.md", "Common", "shared body", ("reference",))
+    _index(db_path, "/foo.md", "Foo", "shared body", ("project:foo",))
+    _index(db_path, "/bar.md", "Bar", "shared body", ("project:bar",))
+
+    results = search(db_path, "shared", limit=10, project="foo")
+
+    assert {item.title for item in results} == {"Common", "Foo"}
+
+
+def test_project_scope_and_tag_filter_both_apply(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/common.md", "Common", "body", ("runbook",))
+    _index(db_path, "/foo.md", "Foo", "body", ("project:foo", "decision"))
+
+    results = search(db_path, "body", limit=10, project="foo", tags=("runbook",))
+
+    assert [item.title for item in results] == ["Common"]
+
+
+def test_project_scope_accepts_full_project_tag(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/foo.md", "Foo", "body", ("project:foo",))
+    _index(db_path, "/bar.md", "Bar", "body", ("project:bar",))
+
+    results = search(db_path, "body", limit=10, project="project:foo")
+
+    assert [item.title for item in results] == ["Foo"]
+
+
+def test_project_scope_rejects_invalid_slug(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/foo.md", "Foo", "body", ("project:foo",))
+
+    with pytest.raises(WikiError):
+        _ = search(db_path, "body", limit=10, project="not a slug")
+
+
+def test_project_scope_survives_low_ranking(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    for index in range(30):
+        _index(
+            db_path,
+            f"/other-{index}.md",
+            f"Other {index}",
+            "shared body shared body shared body",
+            ("project:other",),
+        )
+    _index(db_path, "/foo.md", "Foo", "shared body", ("project:foo",))
+
+    results = search(db_path, "shared", limit=5, project="foo")
+
+    assert [item.title for item in results] == ["Foo"]
+
+
+def test_search_cli_supports_project_option(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/common.md", "Common CLI", "cli body", ("reference",))
+    _index(db_path, "/foo.md", "Foo CLI", "cli body", ("project:foo",))
+    _index(db_path, "/bar.md", "Bar CLI", "cli body", ("project:bar",))
+
+    result = runner.invoke(
+        app,
+        ["search", "cli", "--db", str(db_path), "--project", "foo"],
+    )
+
+    assert result.exit_code == 0
+    assert "Common CLI" in result.output
+    assert "Foo CLI" in result.output
+    assert "Bar CLI" not in result.output
+
+
+def test_ask_context_cli_supports_project_option(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/common.md", "Common Ctx", "context body", ("reference",))
+    _index(db_path, "/foo.md", "Foo Ctx", "context body", ("project:foo",))
+    _index(db_path, "/bar.md", "Bar Ctx", "context body", ("project:bar",))
+
+    result = runner.invoke(
+        app,
+        ["ask-context", "context", "--db", str(db_path), "--project", "foo"],
+    )
+
+    assert result.exit_code == 0
+    assert "Common Ctx" in result.output
+    assert "Foo Ctx" in result.output
+    assert "Bar Ctx" not in result.output
