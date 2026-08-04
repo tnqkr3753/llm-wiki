@@ -77,6 +77,14 @@ def resolve_project_config(start_path: Path | None = None) -> ProjectWikiConfig 
     if config_path is None:
         return None
 
+    # Working inside the global home (a directory literally named .llm-wiki)
+    # makes the upward scan hit the *global* config. That file configures the
+    # home, not a project — treating it as one would resolve its relative
+    # db_path against the home's parent directory.
+    global_config = resolve_home_path(None) / "config.toml"
+    if config_path.resolve() == global_config.resolve():
+        return None
+
     data = _load_config(config_path)
     root = config_path.parent.parent
 
