@@ -43,3 +43,26 @@ def test_manual_mentions_init_codex_and_agent_memory() -> None:
     assert "~/.llm-wiki" in combined
     assert "LLM_WIKI_HOME" in combined
     assert "LLM_WIKI_DB" in combined
+
+
+def test_docs_describe_the_physical_global_vault() -> None:
+    decision = Path("docs/decisions/single-global-wiki-tag-scope.md").read_text(
+        encoding="utf-8"
+    )
+    migrate = Path("docs/runbooks/migrate-to-global-wiki.md").read_text(
+        encoding="utf-8"
+    )
+    obsidian = Path("docs/runbooks/obsidian-usage.md").read_text(encoding="utf-8")
+    graph = Path("docs/references/knowledge-graph.md").read_text(encoding="utf-8")
+    index = Path("docs/index.md").read_text(encoding="utf-8")
+    combined = f"{decision}\n{migrate}\n{obsidian}\n{graph}\n{index}"
+
+    assert "llm-wiki vault import" in combined
+    assert "llm-wiki vault audit" in combined
+    assert "--source evbp-etl=/Users/yuntaepark/Work/evbp-etl/docs" in combined
+    assert "--apply" in combined
+    assert "project:evbp-etl" in combined
+    assert "Obsidian only sees files inside the opened vault" in combined
+    assert "docs/projects/evbp-etl/" in combined
+    assert "--project" in combined
+    assert "cp -r" not in migrate
