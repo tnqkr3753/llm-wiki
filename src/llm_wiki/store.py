@@ -507,6 +507,37 @@ def backlinks(db_path: Path, document_id: DocumentId) -> tuple[DocumentLink, ...
     return tuple(incoming)
 
 
+def link_graph(
+    db_path: Path,
+) -> tuple[
+    tuple[DocumentLink, ...],
+    tuple[tuple[int, int], ...],
+    tuple[str, ...],
+]:
+    """Return all documents, resolved link edges, and unresolved link targets."""
+    initialize(db_path)
+    with closing(sqlite3.connect(db_path)) as connection:
+        documents = _document_index(connection)
+        edges = _fetch_all(
+            connection,
+            "SELECT source_id, target FROM document_links ORDER BY source_id, rowid",
+            (),
+        )
+
+    resolved: list[tuple[int, int]] = []
+    unresolved: list[str] = []
+    for edge in edges:
+        source_id = _row_int(edge, 0)
+        target = _row_str(edge, 1)
+        match = _resolve_target(target, documents)
+        if match is None:
+            if target not in unresolved:
+                unresolved.append(target)
+        elif int(match.id) != source_id:
+            resolved.append((source_id, int(match.id)))
+    return tuple(documents), tuple(resolved), tuple(unresolved)
+
+
 def _document_index(connection: sqlite3.Connection) -> list[DocumentLink]:
     rows = _fetch_all(connection, "SELECT id, path, title FROM documents", ())
     return [
