@@ -398,7 +398,7 @@ def test_codex_install_skill_writes_all_llm_wiki_skills(tmp_path: Path) -> None:
     assert "~/.llm-wiki/docs/references/example.md" in promote_text
     assert "LLM_WIKI_HOME" in promote_text
     assert "global wiki" in promote_text
-    assert "project:<name>" in promote_text
+    assert "project:demo-project" in promote_text
     hooks_text = (skills_dir / "llm-wiki-hooks" / "SKILL.md").read_text(
         encoding="utf-8",
     )
@@ -792,3 +792,53 @@ def test_project_skill_install_and_uninstall(tmp_path: Path) -> None:
     )
     assert uninstall_res.exit_code == 0
     assert not skill_file.is_file()
+
+
+def test_installed_skills_describe_global_wiki_contract(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills"
+
+    result = runner.invoke(
+        app,
+        [
+            "codex",
+            "install-skill",
+            "--skills-dir",
+            str(skills_dir),
+            "--tool-path",
+            str(tmp_path / "tool"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    combined = "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(skills_dir.rglob("SKILL.md"))
+    )
+    assert "--db ~/.llm-wiki/wiki.db" in combined
+    assert "--project demo-project" in combined
+    assert "~/.llm-wiki/docs/projects/demo-project/" in combined
+    for name in (
+        "llm-wiki-init",
+        "llm-wiki-recall",
+        "llm-wiki-promote",
+        "llm-wiki-maintain",
+        "llm-wiki-hooks",
+    ):
+        text = (skills_dir / name / "SKILL.md").read_text(encoding="utf-8")
+        assert "~/.llm-wiki/wiki.db" in text
+
+
+def test_init_agents_global_mode_points_to_global_db(tmp_path: Path) -> None:
+    project = tmp_path / "demo-project"
+    home = tmp_path / "global-home"
+
+    result = runner.invoke(
+        app,
+        ["project", "init", "-p", str(project), "--agents", "--home", str(home)],
+    )
+
+    agents_text = (project / "AGENTS.md").read_text(encoding="utf-8")
+    assert result.exit_code == 0
+    assert f"--db {home / 'wiki.db'}" in agents_text
+    assert "--project demo-project" in agents_text
+    assert str(home / "docs" / "projects" / "demo-project") in agents_text

@@ -11,6 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from llm_wiki.agents import HOOK_SCRIPT_NAME, TOOL_REPO_PATH, AgentKind, AgentTarget
+from llm_wiki.config import (
+    PROJECT_TAG_PREFIX,
+    WikiMode,
+    resolve_db_path,
+    resolve_project_config,
+)
+from llm_wiki.errors import ConfigReadError
 from llm_wiki.hook_templates import (
     guardrail_script,
     prompt_hook_script,
@@ -52,8 +59,14 @@ def install_agent_hooks(
 
     if include_prompt_auto_inject:
         if force or not script_path.exists():
+            db_path, project_slug = _resolve_hook_scope(resolved_project_path)
             _ = script_path.write_text(
-                prompt_hook_script(target, str(resolved_tool_path.resolve())),
+                prompt_hook_script(
+                    target,
+                    str(resolved_tool_path.resolve()),
+                    db_path=db_path,
+                    project_slug=project_slug,
+                ),
                 encoding="utf-8",
             )
             script_path.chmod(0o755)
@@ -66,6 +79,27 @@ def install_agent_hooks(
         )
 
     return HookInstallResult(hooks_path=hooks_path, script_path=startup_res.script_path)
+
+
+def _resolve_hook_scope(project_path: Path) -> tuple[str | None, str | None]:
+    """Resolve the DB path and project slug to embed into the prompt hook.
+
+    Resolution happens once at install time via ``config.py`` so the generated
+    script can pass explicit ``--db``/``--project`` arguments instead of
+    depending on the GUI process environment or parsing TOML at runtime.
+    """
+    try:
+        config = resolve_project_config(project_path)
+    except ConfigReadError:
+        return None, None
+    if config is None:
+        return None, None
+
+    db_path = str(resolve_db_path(None, project_path))
+    if config.mode is WikiMode.GLOBAL and config.project_tag is not None:
+        slug = config.project_tag.removeprefix(PROJECT_TAG_PREFIX)
+        return db_path, slug
+    return db_path, None
 
 
 def install_startup_hook(

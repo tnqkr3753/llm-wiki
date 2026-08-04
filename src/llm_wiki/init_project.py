@@ -98,7 +98,9 @@ def _initialize_isolated(
     index_path = docs_dir / "index.md"
     _write_if_missing(index_path, INDEX_TEXT)
 
-    agents_path = _maybe_write_agents(project_path, include_agents, db_path=db_path)
+    agents_path = _maybe_write_agents(
+        project_path, include_agents, db_path=db_path, project_slug=None
+    )
     return InitResult(
         project_path=project_path,
         db_path=db_path,
@@ -120,7 +122,10 @@ def _initialize_global_mode(
     _write_if_missing(config_path, GLOBAL_MODE_CONFIG_TEMPLATE.format(slug=slug))
 
     agents_path = _maybe_write_agents(
-        project_path, include_agents, db_path=global_result.db_path
+        project_path,
+        include_agents,
+        db_path=global_result.db_path,
+        project_slug=slug,
     )
     return InitResult(
         project_path=project_path,
@@ -160,7 +165,10 @@ def _describe_existing(
 
 
 def _maybe_write_agents(
-    project_path: Path, include_agents: bool, db_path: Path
+    project_path: Path,
+    include_agents: bool,
+    db_path: Path,
+    project_slug: str | None,
 ) -> Path | None:
     if not include_agents:
         return None
@@ -168,7 +176,10 @@ def _maybe_write_agents(
     _write_or_append_agents(
         agents_path,
         _agents_text(
-            project_path=project_path, tool_path=TOOL_REPO_PATH, db_path=db_path
+            project_path=project_path,
+            tool_path=TOOL_REPO_PATH,
+            db_path=db_path,
+            project_slug=project_slug,
         ),
     )
     return agents_path
@@ -222,24 +233,35 @@ def _write_or_append_agents(path: Path, text: str) -> None:
     _ = path.write_text(f"{current}{separator}{text}", encoding="utf-8")
 
 
-def _agents_text(project_path: Path, tool_path: Path, db_path: Path) -> str:
+def _agents_text(
+    project_path: Path,
+    tool_path: Path,
+    db_path: Path,
+    project_slug: str | None,
+) -> str:
     project_root = project_path.resolve()
-    wiki_db = db_path
-    docs_file = project_root / "docs" / "<file>.md"
+    if project_slug is not None:
+        docs_root = db_path.parent / "docs" / "projects" / project_slug
+        scope_option = f" --project {project_slug}"
+    else:
+        docs_root = project_root / "docs"
+        scope_option = ""
+    docs_file = docs_root / "<file>.md"
     return f"""# LLM Wiki Instructions
 
 Before answering project-specific questions or changing behavior, retrieve
 durable project knowledge with:
 
 ```bash
-uv run --directory {tool_path} llm-wiki ask-context "<question>" --db {wiki_db}
+uv run --directory {tool_path} llm-wiki ask-context "<question>" \
+--db {db_path}{scope_option}
 ```
 
 When a new long-lived rule, decision, runbook, or reference becomes approved,
-write it as Markdown under `{project_root}/docs/` and index it with:
+write it as Markdown under `{docs_root}/` and index it with:
 
 ```bash
-uv run --directory {tool_path} llm-wiki add {docs_file} --db {wiki_db}
+uv run --directory {tool_path} llm-wiki add {docs_file} --db {db_path}
 ```
 
 Use Agent Memory for working observations and session recall. Promote only
