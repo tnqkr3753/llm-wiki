@@ -421,3 +421,25 @@ def test_source_update_of_pristine_target_is_update(tmp_path: Path) -> None:
     assert replan.conflicts == ()
     _ = apply_global_vault(replan)
     assert "Updated source body." in managed.read_text("utf-8")
+
+
+def test_hub_and_index_blocks_keep_foreign_physical_notes(tmp_path: Path) -> None:
+    home = _home(tmp_path)
+    source = _make_source(tmp_path, "alpha", {"decisions/a.md": DOC})
+    _ = apply_global_vault(plan_global_vault(home, [source]))
+
+    foreign_note = home / "docs" / "projects" / "alpha" / "notes" / "from-mac.md"
+    foreign_note.parent.mkdir(parents=True)
+    _ = foreign_note.write_text("---\ntitle: Foreign\n---\n\nBody.\n", encoding="utf-8")
+    foreign_hub = home / "docs" / "projects" / "beta" / "index.md"
+    foreign_hub.parent.mkdir(parents=True)
+    _ = foreign_hub.write_text("---\ntitle: Beta\n---\n\n# Beta\n", encoding="utf-8")
+
+    _ = apply_global_vault(plan_global_vault(home, [source]))
+
+    alpha_hub = (home / "docs" / "projects" / "alpha" / "index.md").read_text("utf-8")
+    global_index = (home / "docs" / "index.md").read_text("utf-8")
+    assert "[[projects/alpha/notes/from-mac]]" in alpha_hub
+    assert "[[projects/alpha/decisions/a]]" in alpha_hub
+    assert "[[projects/beta/index]]" in global_index
+    assert "[[projects/alpha/index]]" in global_index
