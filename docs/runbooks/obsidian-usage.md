@@ -1,84 +1,87 @@
 ---
-title: Browsing the Wiki in Obsidian
+title: Obsidian에서 위키 탐색하기
 tags:
   - runbook
   - obsidian
   - graph
 ---
+# Obsidian에서 위키 탐색하기
 
-# Browsing the Wiki in Obsidian
+위키의 `docs/` 폴더는 `[[wikilinks]]`가 포함된 일반 Markdown이므로,
+내보내기나 변환 없이 [Obsidian](https://obsidian.md) vault로 바로 열린다.
+이 runbook은 일상적인 사용법을 다룬다. 내부 메커니즘은
+[[references/knowledge-graph]]를, 페이지 목록은 [[index]]를 참조한다.
 
-The wiki's `docs/` folder is plain Markdown with `[[wikilinks]]`, so it opens
-directly as an [Obsidian](https://obsidian.md) vault — no export or conversion.
-This runbook covers day-to-day use. For the underlying mechanism see
-[[references/knowledge-graph]]; return to the [[index]] for the page list.
+## 1. Vault 열기
 
-## 1. Open the vault
+1. Obsidian에서: **Open folder as vault(폴더를 vault로 열기)**.
+2. 위키의 docs 루트를 지정한다:
+   - 프로젝트 위키: `/path/to/project/docs`
+   - 전역 위키: `~/.llm-wiki/docs`
+3. 프롬프트가 뜨면 폴더를 신뢰(trust)한다(본인의 노트다).
 
-1. In Obsidian: **Open folder as vault**.
-2. Point it at the wiki's docs root:
-   - Project wiki: `/path/to/project/docs`
-   - Global wiki: `~/.llm-wiki/docs`
-3. Trust the folder when prompted (these are your own notes).
+`.llm-wiki/wiki.db` 색인은 `docs/` 밖에 있으므로 Obsidian에는 결코 보이지
+않는다.
 
-The `.llm-wiki/wiki.db` index lives outside `docs/`, so Obsidian never shows it.
+## 2. Wikilink 켜기
 
-## 2. Turn on wikilinks
+Obsidian은 기본적으로 `[[page]]` 링크를 해석한다.
+**Settings → Files & Links(설정 → 파일 및 링크)**에서 확인한다:
 
-Obsidian resolves `[[page]]` links by default. Confirm under
-**Settings → Files & Links**:
+- **Use `[[Wikilinks]]`**: 켬
+- **New link format(새 링크 형식)**: *Shortest path when possible(가능하면
+  최단 경로)* — 여기서 target을 쓰는 방식과 일치한다. 예: `[[manual]]`,
+  `[[decisions/hook-event-name-invariant]]`
 
-- **Use `[[Wikilinks]]`**: on
-- **New link format**: *Shortest path when possible* (matches how targets are
-  written here, e.g. `[[manual]]`, `[[decisions/hook-event-name-invariant]]`)
+## 3. 그래프 보기
 
-## 3. See the graph
+- **Graph view(그래프 뷰)**(왼쪽 리본 또는 `Ctrl/Cmd+G`)는 모든 문서를
+  노드로, 모든 `[[wikilink]]`를 간선으로 그린다. [[index]] 페이지가 대부분의
+  페이지가 되돌아 링크하는 허브다.
+- **Local graph(로컬 그래프)**(노트의 ⋮ 메뉴)는 해당 페이지의 이웃만
+  보여준다.
+- **Backlinks(백링크)**(오른쪽 사이드바)는 현재 페이지**로** 링크하는 모든
+  페이지를 나열한다 — `llm-wiki links <id>`가 `← backlinks` 아래에 출력하는
+  것과 같은 집합이다.
 
-- **Graph view** (left ribbon, or `Ctrl/Cmd+G`) draws every document as a node
-  and every `[[wikilink]]` as an edge. The [[index]] page is the hub that most
-  pages link back to.
-- **Local graph** (from a note's ⋮ menu) shows just that page's neighbours.
-- **Backlinks** (right sidebar) lists every page that links **to** the current
-  one — the same set `llm-wiki links <id>` prints under `← backlinks`.
+어떤 페이지가 고립된 점으로 보인다면 아직 `[[wikilinks]]`가 없는 것이다 —
+[[index]]로 되돌아가는 링크를 하나 추가해 연결한다. 감사(audit) 목적이라면
+Graph View 설정에서 **Orphans(고아)**를 켜고(**Existing files only(기존 파일만)**
+와 **Tags(태그)**도 켠 상태로) 연결되지 않은 노트와 해석되지 않는 target을
+한눈에 볼 수 있게 한다.
 
-If a page appears as an isolated dot, it has no `[[wikilinks]]` yet — add one
-back to the [[index]] to connect it. For an audit pass, enable **Orphans** in
-Graph View settings (with **Existing files only** and **Tags** on) so
-unconnected notes and unresolved targets are visible at a glance.
+## 3b. 전역 vault의 프로젝트 허브
 
-## 3b. Project hubs in the global vault
+`llm-wiki vault import`로 프로젝트들을 전역 vault에 실체화하면
+([[runbooks/migrate-to-global-wiki]] 참조), 각 프로젝트는
+`projects/evbp-etl/` 같은 네임스페이스 아래에 자리한다:
 
-When projects are materialized into the global vault with
-`llm-wiki vault import` (see [[runbooks/migrate-to-global-wiki]]), each
-project lives under a namespace such as `projects/evbp-etl/`:
+- `projects/<slug>/index.md`가 **프로젝트 허브**다. 그 안의 관리형(managed)
+  블록이 해당 프로젝트의 모든 import된 노트를 링크한다.
+- 모든 관리형 노트는 관리형 `Related: [[projects/<slug>/index]]` backlink를
+  가지므로, 관리형 노트는 고아가 되지 않는다.
+- 전역 `index.md`는 모든 프로젝트 허브를 링크하는 관리형 블록을 가진다.
+- 프로젝트 태그는 YAML 리스트 태그(`project:<slug>`)이므로, 쉼표로 구분된
+  스칼라 하나가 아니라 Graph View에서 개별 태그 노드로 나타난다.
 
-- `projects/<slug>/index.md` is the **project hub**; a managed block inside it
-  links every imported note of that project.
-- Every managed note carries a managed `Related: [[projects/<slug>/index]]`
-  backlink, so no managed note is an orphan.
-- The global `index.md` carries a managed block linking every project hub.
-- Project tags are YAML list tags (`project:<slug>`), so they appear as
-  separate tag nodes in Graph View instead of one comma-separated scalar.
-
-Cross-check the whole surface with:
+전체 표면은 다음으로 교차 검증한다:
 
 ```bash
 llm-wiki vault audit --home ~/.llm-wiki --db ~/.llm-wiki/wiki.db
 ```
 
-It compares physical Markdown against indexed documents and reports orphan
-nodes, unresolved wikilink targets, and indexed paths outside the vault.
+이 명령은 물리적 Markdown과 색인된 문서를 비교하여 고아 노드, 해석되지 않는
+wikilink target, vault 밖의 색인 경로를 보고한다.
 
-**Rollback**: restore the backed-up `docs/` tree and DB from
-`~/.llm-wiki/backups/`; source repositories are never modified by the import,
-so no repo-side rollback is needed.
+**롤백**: `~/.llm-wiki/backups/`에서 백업된 `docs/` 트리와 DB를 복원한다.
+import는 원본 저장소를 절대 수정하지 않으므로 저장소 쪽 롤백은 필요 없다.
 
-## 4. Conventions when adding pages
+## 4. 페이지 추가 시 컨벤션
 
-Keep Obsidian and the wiki engine in sync by following these when you write a
-new document under `docs/`:
+`docs/` 아래에 새 문서를 작성할 때 다음을 지켜 Obsidian과 위키 엔진을
+동기화 상태로 유지한다:
 
-1. **Frontmatter** with a `title` and **YAML list tags**:
+1. `title`과 **YAML 리스트 태그**가 있는 **frontmatter**:
 
    ```markdown
    ---
@@ -89,28 +92,29 @@ new document under `docs/`:
    ---
    ```
 
-2. **Link it into the graph** — add at least one `[[index]]` link from the new
-   page, and a `[[your-new-page]]` link from `index.md`, so it is never an
-   orphan node.
+2. **그래프에 연결하기** — 새 페이지에서 최소 하나의 `[[index]]` 링크를,
+   `index.md`에서 `[[your-new-page]]` 링크를 추가하여 고아 노드가 되지
+   않게 한다.
 
-3. **Re-index** so the engine stores the new edges:
+3. **재색인** — 엔진이 새 간선을 저장하도록 한다:
 
    ```bash
    llm-wiki reindex          # whole docs root, or:
    llm-wiki add docs/runbooks/deployment-rollback.md
    ```
 
-The `llm-wiki-promote` skill applies exactly these conventions automatically
-when it promotes knowledge into the wiki.
+`llm-wiki-promote` 스킬은 지식을 위키로 승격할 때 정확히 이 컨벤션들을
+자동으로 적용한다.
 
-## 5. Cross-check the graph from the CLI
+## 5. CLI로 그래프 교차 검증
 
-Obsidian's graph is visual; the engine's is queryable. They should match:
+Obsidian의 그래프는 시각적이고, 엔진의 그래프는 조회 가능하다. 둘은
+일치해야 한다:
 
 ```bash
 llm-wiki search "<text>"      # find a document id
 llm-wiki links <id>           # → outgoing links and ← backlinks
 ```
 
-If Obsidian shows an edge that `llm-wiki links` does not, the index is stale —
-run `llm-wiki reindex`.
+Obsidian에는 보이는 간선이 `llm-wiki links`에는 없다면 색인이 오래된 것이다 —
+`llm-wiki reindex`를 실행한다.

@@ -1,37 +1,37 @@
 ---
-title: LLM Wiki Index
+title: LLM Wiki 인덱스
 tags:
   - index
   - llm-wiki
 ---
 
-# LLM Wiki Index
+# LLM Wiki 인덱스
 
-Use this page as the entry point for durable project knowledge.
+영속 프로젝트 지식의 진입점으로 이 페이지를 사용한다.
 
-## Sections
+## 섹션
 
-- `decisions/`: approved architecture and product decisions
-- `runbooks/`: repeatable operating procedures
-- `references/`: stable source notes and external references
+- `decisions/`: 승인된 아키텍처·제품 결정
+- `runbooks/`: 반복 가능한 운영 절차
+- `references/`: 안정된 원천 노트·외부 참고자료
 
-## Pages
+## 페이지
 
-- [[manual]] — full CLI manual: init, indexing, retrieval, agent integration.
-- [[example]] — architecture guide: how approved knowledge is stored and indexed.
-- [[runbooks/obsidian-usage]] — open this folder in Obsidian, use the graph
-  view, and the conventions for adding new pages.
-- [[runbooks/migrate-to-global-wiki]] — materialize per-project wikis into the
-  single global vault with `llm-wiki vault import` (dry-run first), rebuild a
-  fresh index, and verify with `llm-wiki vault audit`.
-- [[references/knowledge-graph]] — how wikilinks, the link table, resolution,
-  and backlinks work under the hood.
-- [[decisions/single-global-wiki-tag-scope]] — one global wiki, scoped by
-  `project:` tags instead of per-project databases.
-- [[decisions/hook-event-name-invariant]] — the hook event-name invariant and
-  why there is no looping `Stop` hook.
+- [[manual]] — 전체 CLI 매뉴얼: init, 색인, 검색, 에이전트 연동.
+- [[example]] — 아키텍처 가이드: 승인된 지식이 어떻게 저장·색인되는지.
+- [[runbooks/obsidian-usage]] — 이 폴더를 Obsidian으로 열기, 그래프 뷰 사용법,
+  새 페이지 추가 컨벤션.
+- [[runbooks/migrate-to-global-wiki]] — 프로젝트별 위키를
+  `llm-wiki vault import`(dry-run 먼저)로 단일 전역 vault에 물리화하고,
+  색인을 새로 만들고, `llm-wiki vault audit`로 검증하는 절차.
+- [[references/knowledge-graph]] — wikilink, 링크 테이블, 해석(resolution),
+  백링크가 내부에서 동작하는 방식.
+- [[decisions/single-global-wiki-tag-scope]] — 프로젝트별 DB 대신 `project:`
+  태그로 범위를 나누는 단일 전역 위키.
+- [[decisions/hook-event-name-invariant]] — hook 이벤트명 불변식과 루프를 도는
+  `Stop` hook이 없는 이유.
 
-Open this folder as an Obsidian vault to browse the same graph visually — every
-double-bracketed link above becomes an edge in the graph view, and the wiki
-engine tracks the same edges through `llm-wiki links <id>`. See
-[[runbooks/obsidian-usage]] to get started.
+이 폴더를 Obsidian vault로 열면 같은 그래프를 시각적으로 탐색할 수 있다 — 위의
+겹대괄호 링크 하나하나가 그래프 뷰의 엣지가 되고, 위키 엔진도
+`llm-wiki links <id>`로 같은 엣지를 추적한다. 시작은
+[[runbooks/obsidian-usage]] 참고.
