@@ -1,45 +1,43 @@
 ---
-title: Rank documents by grounding use, and only ask-context records it
+title: 문서를 근거 사용 빈도로 랭킹하고, 기록은 ask-context만 한다
 tags: llm-wiki, project, store, ranking, decisions
 ---
+# 검색 사용량 랭킹
 
-# Retrieval usage ranking
+위키의 가장 가치 있는 자산은 콘텐츠 자체가 아니라 **어떤 콘텐츠가 실제로
+사용되는가**다. BM25만으로는 스무 번의 답변에 근거를 제공한 결정 기록과
+작성된 날 이후 한 번도 검색되지 않은 기록을 구분할 수 없다.
+`document_usage`가 문서별로 `retrieved_count`와 `last_retrieved_at`을
+기록하고, 검색은 이를 가중치로 반영할 수 있다.
 
-A wiki's most valuable asset is not its content but **which content actually
-gets used**. BM25 alone cannot tell a decision record that has grounded twenty
-answers from one that has never been retrieved since the day it was written.
-`document_usage` records `retrieved_count` and `last_retrieved_at` per
-document, and search can weight by it.
+## 검색 기록은 `ask-context`만 남긴다
 
-## Only `ask-context` records a retrieval
+`search`와 `show`는 사람이 둘러보기 위한 것이다. `ask-context`는
+에이전트가 프롬프트에 주입하는 것이므로, 검색 횟수를 집계하는 유일한
+명령이다. 둘러보기를 신호에 섞으면 질문에 답하는 문서가 아니라 사람들이
+클릭하는 문서에 보상을 주게 된다.
 
-`search` and `show` are for humans browsing. `ask-context` is what an agent
-injects into a prompt, so it is the only command that counts a retrieval.
-Mixing browsing into the signal would reward documents that people click on
-rather than documents that answer questions.
-
-## Scoring
+## 스코어링
 
 `adjusted = bm25 * (1 + usage_weight * ln(1 + retrieved_count))`
 
-The logarithm keeps a frequently used document from dominating forever — going
-from 0 to 1 retrieval matters far more than from 40 to 41. `usage_weight`
-defaults to 0 in `store.search()` (unchanged BM25 order) and to 0.3 in
-`ask-context`, overridable with `--usage-weight`.
+로그 함수는 자주 사용되는 문서가 영원히 지배하는 것을 막는다 — 검색
+횟수가 0에서 1이 되는 것이 40에서 41이 되는 것보다 훨씬 중요하다.
+`usage_weight`의 기본값은 `store.search()`에서 0(BM25 순서 그대로),
+`ask-context`에서 0.3이며 `--usage-weight`로 재정의할 수 있다.
 
-Re-ranking happens in Python, not SQL, because `log()` requires SQLite built
-with `SQLITE_ENABLE_MATH_FUNCTIONS` and that cannot be assumed. To make the
-re-rank meaningful, the query fetches more candidates than the final limit
-(`max(limit * 4, 20)`) and truncates after sorting.
+재랭킹은 SQL이 아니라 Python에서 수행한다. `log()`는
+`SQLITE_ENABLE_MATH_FUNCTIONS`로 빌드된 SQLite를 요구하는데 이를 가정할
+수 없기 때문이다. 재랭킹이 의미 있으려면, 쿼리는 최종 limit보다 많은
+후보(`max(limit * 4, 20)`)를 가져온 뒤 정렬 후 잘라낸다.
 
-## Never-retrieved documents are a maintenance signal
+## 한 번도 검색되지 않은 문서는 유지보수 신호다
 
-`llm-wiki usage` separates retrieved documents from those with a count of
-zero. A zero is not proof a document is worthless, but it does mean the wiki
-never answered a question with it — either its wording does not match how
-questions are asked, or it should not have been promoted. The
-`llm-wiki-maintain` skill reports them; it never deletes them.
+`llm-wiki usage`는 검색된 문서와 횟수가 0인 문서를 분리해 보여준다. 0이
+문서가 무가치하다는 증명은 아니지만, 위키가 그 문서로 질문에 답한 적이
+없다는 뜻이다 — 문장이 질문 방식과 맞지 않거나, 애초에 승격되지
+말았어야 했거나 둘 중 하나다. `llm-wiki-maintain` 스킬은 이를 보고만
+하고, 절대 삭제하지 않는다.
 
-Usage rows are deleted along with their document when `reindex` prunes a
-deleted file, so a path that is re-added later starts from zero rather than
-inheriting a stale count.
+`reindex`가 삭제된 파일을 정리할 때 사용량 행도 문서와 함께 삭제되므로,
+나중에 다시 추가된 경로는 오래된 카운트를 물려받는 대신 0부터 시작한다.
