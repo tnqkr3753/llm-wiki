@@ -23,7 +23,7 @@ from llm_wiki.agents import CLAUDE_TARGET, CODEX_TARGET, GEMINI_TARGET, AgentTar
 from llm_wiki.config import resolve_db_path, resolve_home_path
 from llm_wiki.doctor import run_doctor
 from llm_wiki.errors import WikiError
-from llm_wiki.git_hook import install_git_hook
+from llm_wiki.git_hook import install_git_hook, install_sync_hook
 from llm_wiki.global_vault import (
     apply_global_vault,
     audit_global_vault,
@@ -694,6 +694,22 @@ def git_hook_install(
     """Install a Git post-commit hook that automatically reindexes LLM Wiki."""
     try:
         _ = install_git_hook(path, force=force)
+    except WikiError as exc:
+        console.print(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+
+
+@git_hook_app.command("install-sync")
+def git_hook_install_sync(
+    path: ProjectPathOption = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite existing post-merge/checkout hooks."),
+    ] = False,
+) -> None:
+    """Install post-merge/post-checkout hooks that sync the wiki after pull."""
+    try:
+        _ = install_sync_hook(path, force=force)
     except WikiError as exc:
         console.print(f"Error: {exc}")
         raise typer.Exit(1) from exc

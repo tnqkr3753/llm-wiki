@@ -164,6 +164,17 @@ repeatable troubleshooting findings.
 Default to the **single global wiki**. It is one connected knowledge graph;
 scope by tags, not by separate databases.
 
+Knowledge flows personal-first, then into the project repo:
+
+0. **Capture first as a draft** when the knowledge is fresh or unreviewed.
+   Write it under `~/.llm-wiki/docs/drafts/<slug>/` with the project tag
+   plus a `draft` tag — it is immediately searchable (drafts rank below
+   promoted documents) and syncs to your other machines via the vault git.
+   When it matures, move it into the project repo's `docs/` and commit —
+   that commit is what transfers the knowledge to teammates; the next
+   `llm-wiki vault import` (or the post-merge sync hook) mirrors it back
+   into `projects/<slug>/`, and then you delete the draft.
+
 1. Write the document under the global docs root. Project-specific knowledge
    goes into that project's namespace, for example
    `~/.llm-wiki/docs/projects/demo-project/{{{{decisions,runbooks,references}}}}/`;
