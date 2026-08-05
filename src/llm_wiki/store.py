@@ -255,7 +255,24 @@ def search(
         ranked = _filter_by_tags(ranked, tags)
     if usage_weight > 0:
         ranked = _rank_by_usage(db_path, ranked, usage_weight)
+    ranked = _demote_drafts(ranked)
     return [_result_from_row(row) for row in ranked[:limit]]
+
+
+DRAFT_TAG: Final = "draft"
+
+
+def _demote_drafts(rows: list[SqlRow]) -> list[SqlRow]:
+    """Stable-partition results so `draft`-tagged captures rank below others.
+
+    Officially promoted documents (committed to a project repo and mirrored
+    into the vault) carry no `draft` tag; personal captures do. When both
+    match a query the reviewed document wins, but a draft-only match is
+    still returned.
+    """
+    official = [row for row in rows if DRAFT_TAG not in _split_tags(_row_str(row, 3))]
+    drafts = [row for row in rows if DRAFT_TAG in _split_tags(_row_str(row, 3))]
+    return official + drafts
 
 
 def normalize_project_scope(value: str) -> str:

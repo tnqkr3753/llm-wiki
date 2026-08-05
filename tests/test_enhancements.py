@@ -143,3 +143,64 @@ def test_doctor_reports_rows_outside_global_docs_root(
 
     assert result.exit_code == 0
     assert "outside" in result.output.lower()
+
+
+def test_sync_hook_for_global_mode_runs_vault_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from llm_wiki.git_hook import install_sync_hook
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("LLM_WIKI_HOME", str(home))
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    project = tmp_path / "demo-project"
+    (project / ".git").mkdir(parents=True)
+    (project / ".llm-wiki").mkdir()
+    (project / ".llm-wiki" / "config.toml").write_text(
+        'mode = "global"\nproject_tag = "project:demo-project"\ndocs_dir = "docs"\n',
+        encoding="utf-8",
+    )
+
+    scripts = install_sync_hook(project)
+
+    merge_hook = (project / ".git" / "hooks" / "post-merge").read_text("utf-8")
+    assert (project / ".git" / "hooks" / "post-checkout").is_file()
+    assert len(scripts) == 2
+    assert f"--source demo-project={project / 'docs'}" in merge_hook
+    assert f"--home {home}" in merge_hook
+    assert "--apply" in merge_hook
+    assert "reindex" in merge_hook
+    assert f"--db {home / 'wiki.db'}" in merge_hook
+
+
+def test_sync_hook_for_isolated_mode_reindexes_local_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from llm_wiki.git_hook import install_sync_hook
+
+    monkeypatch.delenv("LLM_WIKI_DB", raising=False)
+    project = tmp_path / "private-client"
+    (project / ".git").mkdir(parents=True)
+    (project / ".llm-wiki").mkdir()
+    (project / ".llm-wiki" / "config.toml").write_text(
+        'mode = "isolated"\ndocs_dir = "docs"\ndb_path = ".llm-wiki/wiki.db"\n',
+        encoding="utf-8",
+    )
+
+    _ = install_sync_hook(project)
+
+    merge_hook = (project / ".git" / "hooks" / "post-merge").read_text("utf-8")
+    assert "vault import" not in merge_hook
+    assert f"--db {project / '.llm-wiki' / 'wiki.db'}" in merge_hook
+
+
+def test_sync_hook_requires_git_repository(tmp_path: Path) -> None:
+    from llm_wiki.errors import WikiError
+    from llm_wiki.git_hook import install_sync_hook
+
+    project = tmp_path / "no-git"
+    project.mkdir()
+
+    with pytest.raises(WikiError):
+        _ = install_sync_hook(project)

@@ -188,3 +188,29 @@ def test_ask_context_cli_supports_project_option(tmp_path: Path) -> None:
     assert "Common Ctx" in result.output
     assert "Foo Ctx" in result.output
     assert "Bar Ctx" not in result.output
+
+
+def test_draft_documents_rank_below_official_ones(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(
+        db_path,
+        "/draft.md",
+        "Draft Note",
+        "shared body shared shared context",
+        ("project:foo", "draft"),
+    )
+    _index(db_path, "/official.md", "Official Note", "shared body", ("project:foo",))
+
+    results = search(db_path, "shared", limit=10, project="foo")
+
+    assert {item.title for item in results} == {"Draft Note", "Official Note"}
+    assert results[0].title == "Official Note"
+
+
+def test_draft_only_results_are_still_returned(tmp_path: Path) -> None:
+    db_path = tmp_path / "wiki.db"
+    _index(db_path, "/draft.md", "Draft Only", "unique body", ("draft",))
+
+    results = search(db_path, "unique", limit=10)
+
+    assert [item.title for item in results] == ["Draft Only"]
