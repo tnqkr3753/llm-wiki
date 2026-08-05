@@ -50,8 +50,12 @@ reportUnknownParameterType = "none"
 reportUnknownArgumentType = "none"
 reportUnknownMemberType = "none"
 reportMissingTypeArgument = "none"
-# pytest fixtures are referenced by name, never called directly.
+# pytest fixtures are referenced by name, never called directly, and a
+# fixture requested purely for its side effects is never read in the body.
 reportUnusedFunction = "none"
+reportUnusedParameter = "none"
+# Test doubles are throwaway stand-ins, not part of any public surface.
+reportUnannotatedClassAttribute = "none"
 
 [tool.ruff]
 target-version = "py313"

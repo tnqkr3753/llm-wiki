@@ -149,35 +149,77 @@ Documents with a count of zero were never used to ground an answer — they are
 promotion candidates that did not pay off, and the first thing to review when
 the wiki grows noisy.
 
-## Embedding (configuration only)
+## Embedding and hybrid retrieval
 
-Retrieval is BM25 over a trigram FTS5 index. There is **no embedding backend
-yet**, but the configuration surface is settled, so a local model can be wired
-in later without changing these keys:
+Retrieval is BM25 over a trigram FTS5 index by default. Point LLM Wiki at a
+local embedding server and it also searches by meaning, fusing the two
+rankings — a document that shares no words with your query can still be found.
 
 | Setting | Environment | Config `[embedding]` |
 |---|---|---|
 | model (required) | `LLM_WIKI_EMBED_MODEL` | `model` |
 | endpoint | `LLM_WIKI_EMBED_URL` | `endpoint` |
 | dimension | `LLM_WIKI_EMBED_DIM` | `dimension` |
+| API dialect | `LLM_WIKI_EMBED_API` | `api` |
 | allow remote | `LLM_WIKI_EMBED_ALLOW_REMOTE` | `allow_remote` |
+| API key | `LLM_WIKI_EMBED_API_KEY` | *(environment only)* |
 
 Fields resolve independently: environment first, then the nearest project
-config, then the global config. Setting them changes nothing about search
-today — only what `llm-wiki doctor` reports:
+config, then the global config. `model` is required — without it, embedding is
+simply off. The API key is deliberately **not** readable from config, because a
+wiki's `config.toml` is usually committed.
+
+### Turning it on
 
 ```bash
+export LLM_WIKI_EMBED_MODEL=bge-m3
+export LLM_WIKI_EMBED_URL=http://127.0.0.1:11434   # Ollama
+llm-wiki reindex          # indexes, then embeds what changed
 llm-wiki doctor
-# - Embedding: Not configured (BM25 only)
-# ✓ Embedding: bge-m3 via http://127.0.0.1:11434, dim 1024 - no backend installed yet
+# ✓ Embedding: bge-m3 via http://127.0.0.1:11434 (ollama)
+#   Vectors: 35 of 35 chunks embedded — hybrid search active
 ```
+
+Two server dialects are supported and detected from the endpoint: Ollama's
+`/api/embed`, and the OpenAI-compatible `/v1/embeddings` that vLLM, llama.cpp,
+LM Studio, and TEI expose. Set `LLM_WIKI_EMBED_API=openai` to force the latter
+on a nonstandard URL. The transport is standard-library HTTP, so enabling this
+adds no dependency and no install weight.
+
+### What gets embedded
+
+Documents are split at headings, and each chunk carries its heading path
+(`Parent > Child`) into the embedded text. Chunking improves BM25 results on
+its own: a search result now quotes the section that matched instead of a
+fixed-width fragment.
+
+Vectors are cached by chunk-text hash, so `llm-wiki reindex` — which the
+post-commit hook runs on every commit — re-embeds only the sections you
+actually edited:
+
+```bash
+llm-wiki reindex
+# indexed 7 removed 0
+# embedded 1 reused 34
+```
+
+Use `llm-wiki embed` to backfill a wiki that was indexed before embedding was
+configured.
+
+### It degrades, it never fails
+
+If the model server is down, unreachable, or misconfigured, search falls back
+to BM25 and the wiki stays usable. A failed embedding pass reports what is
+still pending and exits zero; the vectors catch up on the next run.
 
 **Endpoints outside this machine are refused by default.** A wiki holds
 internal decisions and runbooks, so a non-loopback host requires
 `LLM_WIKI_EMBED_ALLOW_REMOTE=1`; otherwise `doctor` reports it as blocked.
 
 See [docs/decisions/embedding-config-surface.md](docs/decisions/embedding-config-surface.md)
-for the sizing measurements and why chunking has to come first.
+for the sizing measurements and
+[docs/decisions/hybrid-retrieval.md](docs/decisions/hybrid-retrieval.md) for
+why retrieval fuses candidates rather than reranking them.
 
 ## Database path resolution
 

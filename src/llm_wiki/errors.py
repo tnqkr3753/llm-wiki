@@ -73,6 +73,45 @@ class ConfigReadError(WikiError):
 
 
 @dataclass(frozen=True, slots=True)
+class EmbeddingBackendError(WikiError):
+    """Raised when the configured embedding server cannot be used.
+
+    Callers treat this as "fall back to BM25", never as a fatal condition: a
+    wiki must stay searchable when the model server is down.
+    """
+
+    @classmethod
+    def no_endpoint(cls) -> "EmbeddingBackendError":
+        """Build an error for embedding settings with no endpoint."""
+        return cls("No embedding endpoint configured")
+
+    @classmethod
+    def bad_scheme(cls, scheme: str) -> "EmbeddingBackendError":
+        """Build an error for a non-HTTP embedding endpoint."""
+        return cls(f"Embedding endpoint must be http or https, got: {scheme or 'none'}")
+
+    @classmethod
+    def unreachable(cls, url: str, reason: str) -> "EmbeddingBackendError":
+        """Build an error for an embedding server that could not be reached."""
+        return cls(f"Embedding server unreachable at {url}: {reason}")
+
+    @classmethod
+    def malformed(cls, url: str) -> "EmbeddingBackendError":
+        """Build an error for an unreadable embedding response."""
+        return cls(f"Embedding server returned an unreadable response: {url}")
+
+    @classmethod
+    def count_mismatch(cls, expected: int, received: int) -> "EmbeddingBackendError":
+        """Build an error for a reply that does not cover every input text."""
+        return cls(f"Embedding server returned {received} vectors for {expected} texts")
+
+    @classmethod
+    def wrong_dimension(cls, expected: int, received: int) -> "EmbeddingBackendError":
+        """Build an error for a vector of unexpected width."""
+        return cls(f"Embedding dimension mismatch: expected {expected}, got {received}")
+
+
+@dataclass(frozen=True, slots=True)
 class SqlColumnTypeError(WikiError):
     """Raised when SQLite returns an unexpected column type."""
 
