@@ -170,10 +170,19 @@ Knowledge flows personal-first, then into the project repo:
    Write it under `~/.llm-wiki/docs/drafts/<slug>/` with the project tag
    plus a `draft` tag — it is immediately searchable (drafts rank below
    promoted documents) and syncs to your other machines via the vault git.
-   When it matures, move it into the project repo's `docs/` and commit —
-   that commit is what transfers the knowledge to teammates; the next
-   `llm-wiki vault import` (or the post-merge sync hook) mirrors it back
-   into `projects/<slug>/`, and then you delete the draft.
+
+   When a draft matures, decide its destination with one question:
+   **"Is this knowledge still valid after leaving this project?"**
+   - **No** → move it into the project repo's `docs/` and commit — that
+     commit is what transfers it to teammates; the next
+     `llm-wiki vault import` (or the post-merge sync hook) mirrors it into
+     `projects/<slug>/`, and then you delete the draft.
+   - **Yes** → move it into the personal common area
+     (`~/.llm-wiki/docs/{{{{decisions,runbooks,references}}}}/`), drop the
+     `draft` and `project:` tags, and it becomes a cross-project asset
+     visible in every project scope.
+   - **Both** → keep the concrete version in the project repo and a
+     generalized version in the common area, linked to each other.
 
 1. Write the document under the global docs root. Project-specific knowledge
    goes into that project's namespace, for example
