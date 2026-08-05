@@ -33,7 +33,8 @@ from llm_wiki.global_vault import (
 from llm_wiki.hook_stats import show_hook_stats
 from llm_wiki.init_project import InitResult, initialize_global, initialize_project
 from llm_wiki.markdown import parse_markdown_file
-from llm_wiki.models import DocumentId
+from llm_wiki.models import DocumentId, EmbedResult
+from llm_wiki.retrieval import build_semantic_search, refresh_embeddings
 from llm_wiki.store import (
     backlinks,
     get_document,
@@ -476,10 +477,36 @@ def reindex(
         raise typer.Exit(1) from exc
 
     console.print(f"indexed {result.indexed} removed {result.removed}")
+    _print_embed_result(refresh_embeddings(resolve_db_path(db)))
     for failure in result.failures:
         console.print(f"failed {failure.path} | {failure.reason}")
     if len(result.failures) > 0:
         raise typer.Exit(1)
+
+
+def _print_embed_result(result: EmbedResult | None) -> None:
+    """Report an embedding pass, staying silent when embedding is off."""
+    if result is None:
+        return
+    console.print(f"embedded {result.embedded} reused {result.reused}")
+    if result.reason is not None:
+        # Not an exit code: the documents are indexed and searchable by BM25,
+        # and the vectors catch up on the next run.
+        console.print(
+            f"embedding incomplete ({result.failed} pending) | {result.reason}"
+        )
+
+
+@app.command("embed")
+def embed(
+    db: DbOption = None,
+) -> None:
+    """Embed every indexed chunk that has no vector for the configured model."""
+    result = refresh_embeddings(resolve_db_path(db))
+    if result is None:
+        console.print("Embedding is not configured (see `llm-wiki doctor`)")
+        return
+    _print_embed_result(result)
 
 
 TagOption = Annotated[
@@ -510,8 +537,14 @@ def _print_search_results(
     project: str | None,
 ) -> None:
     try:
+        db_path = resolve_db_path(db)
         results = search(
-            resolve_db_path(db), query, limit, tags=tags or (), project=project
+            db_path,
+            query,
+            limit,
+            tags=tags or (),
+            project=project,
+            semantic=build_semantic_search(db_path, query),
         )
     except WikiError as exc:
         console.print(f"Error: {exc}")
@@ -613,6 +646,7 @@ def ask_context(
             usage_weight=usage_weight,
             tags=tag or (),
             project=project,
+            semantic=build_semantic_search(db_path, query),
         )
     except WikiError as exc:
         console.print(f"Error: {exc}")

@@ -38,7 +38,7 @@ def test_manual_mentions_init_codex_and_agent_memory() -> None:
     assert "llm-wiki-maintain" in combined
     assert "llm-wiki-hooks" in combined
     assert "wiki-grounded facts from inference" in combined
-    assert "global/common knowledge" in combined
+    assert "global/common knowledge" in combined or "전역/공통 지식" in combined
     assert "~/.llm-wiki/docs/references" in combined
     assert "~/.llm-wiki" in combined
     assert "LLM_WIKI_HOME" in combined
@@ -62,7 +62,10 @@ def test_docs_describe_the_physical_global_vault() -> None:
     assert "--source evbp-etl=/Users/yuntaepark/Work/evbp-etl/docs" in combined
     assert "--apply" in combined
     assert "project:evbp-etl" in combined
-    assert "Obsidian only sees files inside the opened vault" in combined
+    assert (
+        "Obsidian only sees files inside the opened vault" in combined
+        or "Obsidian은 열린 vault 안의 파일만 본다" in combined
+    )
     assert "docs/projects/evbp-etl/" in combined
     assert "--project" in combined
     assert "cp -r" not in migrate

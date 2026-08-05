@@ -3,12 +3,13 @@
 import math
 import re
 import sqlite3
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
+from llm_wiki.chunking import split_into_chunks
 from llm_wiki.config import PROJECT_SLUG_PATTERN, PROJECT_TAG_PREFIX
 from llm_wiki.errors import (
     DocumentNotFoundError,
@@ -18,6 +19,7 @@ from llm_wiki.errors import (
 )
 from llm_wiki.markdown import parse_markdown_file
 from llm_wiki.models import (
+    DocumentChunk,
     DocumentId,
     DocumentLink,
     DocumentUsage,
@@ -35,6 +37,14 @@ EXCLUDED_DIR_NAMES: Final = frozenset({"venv", "node_modules", "__pycache__"})
 BM25_COLUMN_INDEX: Final = 5
 CANDIDATE_MULTIPLIER: Final = 4
 MIN_CANDIDATES: Final = 20
+SNIPPET_CHARS: Final = 220
+# The constant from the reciprocal-rank-fusion paper; it damps the top of
+# each list so one ranking cannot dominate on its first result alone.
+RRF_K: Final = 60
+SNIPPET_LEAD: Final = 40
+TOKEN_PATTERN: Final = (
+    r"[\w\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]+"  # noqa: S105 - a search-token regex, not a credential
+)
 
 
 SCHEMA = """
@@ -60,6 +70,30 @@ CREATE TABLE IF NOT EXISTS document_links (
     source_id INTEGER NOT NULL,
     target TEXT NOT NULL,
     PRIMARY KEY (source_id, target)
+);
+"""
+
+SCHEMA_CHUNKS = """
+CREATE TABLE IF NOT EXISTS document_chunks (
+    id INTEGER PRIMARY KEY,
+    document_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    heading TEXT NOT NULL,
+    text TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    UNIQUE (document_id, ordinal)
+);
+CREATE INDEX IF NOT EXISTS document_chunks_hash
+    ON document_chunks (content_hash);
+"""
+
+SCHEMA_EMBEDDINGS = """
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+    content_hash TEXT NOT NULL,
+    model TEXT NOT NULL,
+    dimension INTEGER NOT NULL,
+    vector BLOB NOT NULL,
+    PRIMARY KEY (content_hash, model)
 );
 """
 
@@ -93,6 +127,8 @@ def initialize(db_path: Path) -> None:
         _ = connection.executescript(SCHEMA)
         _ = connection.executescript(SCHEMA_USAGE)
         _ = connection.executescript(SCHEMA_LINKS)
+        _ = connection.executescript(SCHEMA_CHUNKS)
+        _ = connection.executescript(SCHEMA_EMBEDDINGS)
 
         # Ensure documents_fts exists with trigram (or fallback unicode61)
         tables = _fetch_all(
@@ -167,8 +203,64 @@ def upsert_document(db_path: Path, document: ParsedDocument) -> DocumentId:
             (int(document_id), document.title, document.body, tags_text),
         )
         _replace_links(connection, document_id, document.links)
+        _replace_chunks(connection, document_id, document.body)
         connection.commit()
         return document_id
+
+
+def _replace_chunks(
+    connection: sqlite3.Connection,
+    document_id: DocumentId,
+    body: str,
+) -> None:
+    """Swap one document's stored chunks for the ones its current body yields."""
+    _ = connection.execute(
+        "DELETE FROM document_chunks WHERE document_id = ?",
+        (int(document_id),),
+    )
+    for chunk in split_into_chunks(body):
+        _ = connection.execute(
+            """
+            INSERT INTO document_chunks
+                (document_id, ordinal, heading, text, content_hash)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                int(document_id),
+                chunk.ordinal,
+                chunk.heading,
+                chunk.text,
+                chunk.content_hash,
+            ),
+        )
+
+
+def document_chunks(
+    db_path: Path,
+    document_id: DocumentId,
+) -> tuple[DocumentChunk, ...]:
+    """List one document's stored chunks in document order."""
+    initialize(db_path)
+    with closing(sqlite3.connect(db_path)) as connection:
+        rows = _fetch_all(
+            connection,
+            """
+            SELECT ordinal, heading, text, content_hash
+            FROM document_chunks
+            WHERE document_id = ?
+            ORDER BY ordinal
+            """,
+            (int(document_id),),
+        )
+    return tuple(
+        DocumentChunk(
+            ordinal=_row_int(row, 0),
+            heading=_row_str(row, 1),
+            text=_row_str(row, 2),
+            content_hash=_row_str(row, 3),
+        )
+        for row in rows
+    )
 
 
 def _replace_links(
@@ -196,6 +288,7 @@ def search(
     usage_weight: float = 0.0,
     tags: Sequence[str] = (),
     project: str | None = None,
+    semantic: Callable[[], Sequence[tuple[int, float]]] | None = None,
 ) -> list[SearchResult]:
     """Search indexed documents with SQLite FTS5.
 
@@ -211,6 +304,15 @@ def search(
     exactly ``project:<slug>`` plus global/common rows carrying no project
     tag at all. Rows tagged only for other projects are excluded. ``tags``
     still applies afterwards.
+
+    ``semantic`` supplies a second, independently retrieved ranking — vector
+    similarity, in practice — whose documents join the candidate pool rather
+    than merely reordering it, so a document sharing no words with the query
+    can still be found. The two rankings are fused; ``tags`` and ``project``
+    scoping apply to both, while ``min_score`` is a BM25 threshold and does not
+    filter documents that only the semantic side found. It stays a callback so
+    this module keeps knowing nothing about embeddings, and so a wiki with no
+    vectors pays nothing for the feature.
     """
     initialize(db_path)
     project_tag = None if project is None else normalize_project_scope(project)
@@ -218,7 +320,7 @@ def search(
     if fts_query == "":
         return []
     filtered = bool(tags) or project_tag is not None
-    widen = usage_weight > 0 or filtered
+    widen = usage_weight > 0 or filtered or semantic is not None
     # Tag/project filters must see every FTS candidate (LIMIT -1): a match for
     # the selected scope may rank below many out-of-scope rows and would be
     # lost behind a truncated candidate window.
@@ -255,8 +357,153 @@ def search(
         ranked = _filter_by_tags(ranked, tags)
     if usage_weight > 0:
         ranked = _rank_by_usage(db_path, ranked, usage_weight)
+    if semantic is not None:
+        ranked = _fuse_rankings(ranked, semantic(), db_path, tags, project_tag)
     ranked = _demote_drafts(ranked)
-    return [_result_from_row(row) for row in ranked[:limit]]
+    top = ranked[:limit]
+    snippets = _chunk_snippets(db_path, [_row_int(row, 0) for row in top], query)
+    return [_result_from_row(row, snippets) for row in top]
+
+
+def _fuse_rankings(
+    ranked: list[SqlRow],
+    semantic_hits: Sequence[tuple[int, float]],
+    db_path: Path,
+    tags: Sequence[str],
+    project_tag: str | None = None,
+) -> list[SqlRow]:
+    """Blend the lexical and semantic rankings by reciprocal rank fusion.
+
+    RRF combines the two *positions* rather than the two scores, which is what
+    makes it safe here: a BM25 score and a cosine similarity live on
+    incomparable scales, and normalizing them against each other would make the
+    blend depend on how many candidates happened to match.
+    """
+    if not semantic_hits:
+        return ranked
+    lexical_rank = {_row_int(row, 0): index for index, row in enumerate(ranked)}
+    extra = _rows_for_ids(
+        db_path, [key for key, _ in semantic_hits if key not in lexical_rank]
+    )
+    if project_tag is not None:
+        extra = _filter_by_project(extra, project_tag)
+    if tags:
+        extra = _filter_by_tags(extra, tags)
+    pool = [*ranked, *extra]
+    known = {_row_int(row, 0) for row in pool}
+    semantic_rank = {
+        document_id: index
+        for index, (document_id, _) in enumerate(semantic_hits)
+        if document_id in known
+    }
+    missing = len(pool)
+
+    def fused(row: SqlRow) -> tuple[float, int]:
+        document_id = _row_int(row, 0)
+        score = 1.0 / (RRF_K + lexical_rank.get(document_id, missing)) + 1.0 / (
+            RRF_K + semantic_rank.get(document_id, missing)
+        )
+        return (-score, lexical_rank.get(document_id, missing))
+
+    return sorted(pool, key=fused)
+
+
+def _rows_for_ids(db_path: Path, document_ids: list[int]) -> list[SqlRow]:
+    """Load candidate rows the lexical query missed, shaped like FTS results.
+
+    The snippet column is empty because there is no lexical match to quote;
+    ``_chunk_snippets`` fills it from the document's own chunks instead.
+    """
+    if not document_ids:
+        return []
+    placeholders = ", ".join("?" for _ in document_ids)
+    with closing(sqlite3.connect(db_path)) as connection:
+        return _fetch_all(
+            connection,
+            f"""
+            SELECT id, path, title, tags, '' AS snippet, 0.0 AS bm25_score
+            FROM documents
+            WHERE id IN ({placeholders})
+            """,  # noqa: S608 - placeholders are generated, never user input
+            tuple(document_ids),
+        )
+
+
+def _chunk_snippets(
+    db_path: Path,
+    document_ids: list[int],
+    query: str,
+) -> dict[int, str]:
+    """Quote the section that matched, per document, keyed by document id.
+
+    BM25 ranks whole documents, so the fixed-width FTS snippet can land on a
+    passage that has nothing to do with the query. Chunks make it possible to
+    answer with the heading and body of the section that actually matched.
+    Documents with no stored chunks — indexed before chunking existed — are
+    left out so the caller falls back to the FTS snippet.
+    """
+    tokens = _query_tokens(query)
+    if not tokens or not document_ids:
+        return {}
+    placeholders = ", ".join("?" for _ in document_ids)
+    with closing(sqlite3.connect(db_path)) as connection:
+        rows = _fetch_all(
+            connection,
+            f"""
+            SELECT document_id, heading, text
+            FROM document_chunks
+            WHERE document_id IN ({placeholders})
+            ORDER BY document_id, ordinal
+            """,  # noqa: S608 - placeholders are generated, never user input
+            tuple(document_ids),
+        )
+
+    best: dict[int, tuple[int, str]] = {}
+    for row in rows:
+        document_id = _row_int(row, 0)
+        text = _row_str(row, 2)
+        score = sum(1 for token in tokens if token in text.lower())
+        current = best.get(document_id)
+        # Rows arrive in chunk order, so the opening chunk becomes the default.
+        # A document the semantic side found shares no words with the query and
+        # would otherwise have nothing to show.
+        if current is None or score > current[0]:
+            best[document_id] = (score, _render_snippet(_row_str(row, 1), text, tokens))
+    return {document_id: snippet for document_id, (_, snippet) in best.items()}
+
+
+def _render_snippet(heading: str, text: str, tokens: list[str]) -> str:
+    """Render one chunk as a snippet centered on its earliest query match."""
+    body = text.removeprefix(heading).strip() if heading != "" else text.strip()
+    excerpt = _excerpt(body, tokens)
+    return excerpt if heading == "" else f"{heading} — {excerpt}"
+
+
+def _excerpt(body: str, tokens: list[str]) -> str:
+    """Return a single-line window of ``body`` around its first matched token."""
+    condensed = " ".join(body.split())
+    lowered = condensed.lower()
+    positions = [lowered.index(token) for token in tokens if token in lowered]
+    if not positions or len(condensed) <= SNIPPET_CHARS:
+        return _clip(condensed, 0)
+    return _clip(condensed, max(0, min(positions) - SNIPPET_LEAD))
+
+
+def _clip(condensed: str, start: int) -> str:
+    """Cut a fixed-width window out of a condensed line, marking either edge."""
+    window = condensed[start : start + SNIPPET_CHARS]
+    prefix = "... " if start > 0 else ""
+    suffix = " ..." if start + SNIPPET_CHARS < len(condensed) else ""
+    return f"{prefix}{window}{suffix}"
+
+
+def _query_tokens(query: str) -> list[str]:
+    """Extract lowercased searchable tokens, deduplicated in first-seen order."""
+    tokens: list[str] = []
+    for token in re.findall(TOKEN_PATTERN, query.lower()):
+        if token not in tokens:
+            tokens.append(token)
+    return tokens
 
 
 DRAFT_TAG: Final = "draft"
@@ -470,10 +717,7 @@ def _normalize_sql_value(value: SqlValue) -> SqlValue:
 
 
 def _literal_fts_query(query: str) -> str:
-    tokens = re.findall(
-        r"[\w\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]+",
-        query,
-    )
+    tokens = re.findall(TOKEN_PATTERN, query)
     if not tokens:
         return ""
     return " ".join(f'"{token}"' for token in tokens)
@@ -497,13 +741,14 @@ def _split_tags(tags_text: str) -> tuple[str, ...]:
     return tuple(tag.strip() for tag in tags_text.split(",") if tag.strip() != "")
 
 
-def _result_from_row(row: SqlRow) -> SearchResult:
+def _result_from_row(row: SqlRow, snippets: dict[int, str]) -> SearchResult:
+    document_id = _row_int(row, 0)
     return SearchResult(
-        id=DocumentId(_row_int(row, 0)),
+        id=DocumentId(document_id),
         path=_row_str(row, 1),
         title=_row_str(row, 2),
         tags=_split_tags(_row_str(row, 3)),
-        snippet=_row_str(row, 4),
+        snippet=snippets.get(document_id) or _row_str(row, 4),
     )
 
 
@@ -712,6 +957,10 @@ def _remove_missing_documents(db_path: Path, root: Path) -> int:
             )
             _ = connection.execute(
                 "DELETE FROM document_links WHERE source_id = ?",
+                (document_id,),
+            )
+            _ = connection.execute(
+                "DELETE FROM document_chunks WHERE document_id = ?",
                 (document_id,),
             )
         # Prune any usage row whose document is gone, however it was orphaned,

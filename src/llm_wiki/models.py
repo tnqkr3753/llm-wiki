@@ -74,3 +74,23 @@ class SearchResult:
     title: str
     tags: tuple[str, ...]
     snippet: str
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentChunk:
+    """One heading-scoped slice of a document body, as embedded and indexed."""
+
+    ordinal: int
+    heading: str
+    text: str
+    content_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class EmbedResult:
+    """Outcome of one incremental embedding pass over the chunk cache."""
+
+    embedded: int
+    reused: int
+    failed: int
+    reason: str | None

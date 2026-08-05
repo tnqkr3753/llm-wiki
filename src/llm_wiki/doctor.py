@@ -76,6 +76,10 @@ def run_doctor(project_path: Path | None = None) -> None:
             else ("[green]✓[/green]" if settings is not None else "[dim]-[/dim]")
         )
         console.print(f"{marker} Embedding: {describe_settings(settings)}")
+        if settings is not None and wiki_db.is_file():
+            console.print(
+                f"  Vectors: {describe_vector_cache(wiki_db, settings.model)}"
+            )
 
     # 5. Agent Skills & Hooks Inspection
     console.print("\n[bold]Agent Skill & Hook Installations:[/bold]")
@@ -213,6 +217,30 @@ def _missing_indexed_files(db_path: Path, docs_root: Path) -> int:
         if Path(str(row[0])).is_relative_to(docs_root)
         and not Path(str(row[0])).is_file()
     )
+
+
+def describe_vector_cache(db_path: Path, model: str) -> str:
+    """Summarize how much of the chunk index this model has vectors for."""
+    try:
+        with closing(sqlite3.connect(db_path)) as conn:
+            chunks = conn.execute(
+                "SELECT COUNT(DISTINCT content_hash) FROM document_chunks"
+            ).fetchone()
+            vectors = conn.execute(
+                "SELECT COUNT(*) FROM chunk_embeddings WHERE model = ?",
+                (model,),
+            ).fetchone()
+    except sqlite3.Error:
+        return "not built yet (run `llm-wiki embed`)"
+    total = int(chunks[0]) if chunks else 0
+    stored = int(vectors[0]) if vectors else 0
+    if total == 0:
+        return "no chunks indexed (run `llm-wiki reindex`)"
+    if stored == 0:
+        return f"0 of {total} chunks embedded (run `llm-wiki embed`)"
+    if stored < total:
+        return f"{stored} of {total} chunks embedded — hybrid search partially active"
+    return f"{stored} of {total} chunks embedded — hybrid search active"
 
 
 def check_fts5_trigram_support() -> bool:
